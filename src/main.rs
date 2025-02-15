@@ -1,10 +1,13 @@
 use bevy::{
     asset::RenderAssetUsages,
+    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
+    input::mouse,
     prelude::*,
     render::mesh::{Indices, PrimitiveTopology},
+    text::FontSmoothing,
 };
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
-use generation::GpuReadbackPlugin;
+use generation::{make_sphere_buffer, GpuReadbackPlugin, ReadBackMarker};
 
 mod generation;
 
@@ -12,21 +15,51 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
+            FpsOverlayPlugin {
+                config: FpsOverlayConfig {
+                    text_config: TextFont {
+                        // Here we define size of our overlay
+                        font_size: 42.0,
+                        // If we want, we can use a custom font
+                        font: default(),
+                        // We could also disable font smoothing,
+                        font_smoothing: FontSmoothing::default(),
+                    },
+                    enabled: true,
+                    ..default()
+                },
+            },
             GpuReadbackPlugin,
             MeshPickingPlugin,
             DefaultEditorCamPlugins,
         ))
-        .add_systems(Startup, setup)
-        .add_systems(Update, update_mesh)
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(TerrainVertices(Vec::new()))
+        .insert_resource(TerrainData(Vec::new()))
+        .add_systems(Startup, setup)
+        .add_systems(Update, (update_mesh, handle_inputs))
         .run();
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug)]
 pub struct TerrainVertices(Vec<Vec3>);
 
-fn setup(mut commands: Commands) {
+#[derive(Resource, Debug)]
+pub struct TerrainData(Vec<bool>);
+
+fn handle_inputs(
+    mut terrain: ResMut<TerrainData>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    readback_q: Query<&ReadBackMarker>,
+    time: Res<Time>,
+) {
+    if mouse_buttons.just_pressed(MouseButton::Left) {
+        let mult = (time.elapsed_secs().sin() + 1.) / 2.;
+        terrain.0 = make_sphere_buffer(mult);
+    }
+}
+
+fn setup(mut commands: Commands, terrain_vertices: Res<TerrainVertices>) {
     commands.spawn((Camera3d::default(), EditorCam::default()));
 
     commands.spawn((
@@ -53,6 +86,7 @@ fn update_mesh(
     }
     let terrain_mesh_handle: Handle<Mesh> = meshes.add(create_terrain_mesh(&terrain_vertices.0));
 
+    println!("building mesh");
     commands.spawn((
         Mesh3d(terrain_mesh_handle),
         MeshMaterial3d(materials.add(StandardMaterial { ..default() })),

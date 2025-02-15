@@ -1,36 +1,14 @@
 @group(0) @binding(0) var<storage, read_write> input_data: array<u32>;
 @group(0) @binding(1) var<storage, read_write> data: array<vec4<f32>>;
-const CHUNK_WIDTH: u32 = 32;
+const CHUNK_WIDTH: u32 = 64;
 const MAX_VERTICES_PER_VOXEL: u32 = 12;
 
 fn is_voxel_full(pos: vec3<u32>) -> bool {
     return input_data[pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH] != 1;
-    //return true;
 }
 
-fn index_to_coordinates(index: u32) -> vec3<u32> {
-    return vec3<u32>(
-        index % CHUNK_WIDTH,
-        (index / CHUNK_WIDTH) % CHUNK_WIDTH,
-        index / (CHUNK_WIDTH * CHUNK_WIDTH)
-    );
-}
-
-fn arraysEqual(a: array<bool, 8>, b: array<bool, 8>) -> bool {
-    for (var i: u32 = 0u; i < 8u; i++) {
-        if (a[i] != b[i]) {
-            return false;
-        }
-    }
-    return true; 
-}
-
-fn arraySum(a: array<i32, 16>) -> u32 {
-    var sum: i32 = 0;
-    for (var i: u32 = 0u; i < 16u; i++) {
-        sum += a[i];
-    }
-    return u32(abs(sum));
+fn coordinates_to_index(coords: vec3<u32>) -> u32 {
+    return coords.x + coords.y * CHUNK_WIDTH + coords.z * CHUNK_WIDTH * CHUNK_WIDTH;
 }
 
 fn get_middle(a: vec3<u32>, b: vec3<u32>) -> vec3<f32> {
@@ -58,8 +36,7 @@ fn flood_data_with_float_and_marker(index: u32, marker: f32, a: f32) {
     flood_data_with(index, vec4<f32>(marker, a, a, a));
 }
 
-fn corner_index_to_coordinates(index: u32, corner_index: u32) -> vec3<u32> {
-    let fc_coor = index_to_coordinates(index);
+fn corner_index_to_coordinates(index: vec3<u32>, corner_index: u32) -> vec3<u32> {
     const offset = array<vec3<u32>, 8>(
         vec3<u32>(0, 0, 0),
         vec3<u32>(1, 0, 0),
@@ -70,26 +47,23 @@ fn corner_index_to_coordinates(index: u32, corner_index: u32) -> vec3<u32> {
         vec3<u32>(1, 1, 1),
         vec3<u32>(0, 1, 1)
     );
-    return fc_coor + offset[corner_index];
+    return index + offset[corner_index];
 }
 
 @compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.x;
-    let fc_coor = index_to_coordinates(index);
-    //flood_data_with_float(index, 42.0);
-    if (fc_coor.x > CHUNK_WIDTH-1 || fc_coor.y > CHUNK_WIDTH-1 || fc_coor.z > CHUNK_WIDTH-1) {
+fn main(@builtin(global_invocation_id) index: vec3<u32>) {
+    if (index.x > CHUNK_WIDTH-1 || index.y > CHUNK_WIDTH-1 || index.z > CHUNK_WIDTH-1) {
         return;
     }
     let coordinates = array<vec3<u32>, 8>(
-        fc_coor,
-        fc_coor + vec3<u32>(1, 0, 0),
-        fc_coor + vec3<u32>(1, 1, 0),
-        fc_coor + vec3<u32>(0, 1, 0),
-        fc_coor + vec3<u32>(0, 0, 1),
-        fc_coor + vec3<u32>(1, 0, 1),
-        fc_coor + vec3<u32>(1, 1, 1),
-        fc_coor + vec3<u32>(0, 1, 1),
+        index,
+        index + vec3<u32>(1, 0, 0),
+        index + vec3<u32>(1, 1, 0),
+        index + vec3<u32>(0, 1, 0),
+        index + vec3<u32>(0, 0, 1),
+        index + vec3<u32>(1, 0, 1),
+        index + vec3<u32>(1, 1, 1),
+        index + vec3<u32>(0, 1, 1),
     );
     var corners = array<bool, 8>();
     for (var i: u32 = 0; i < 8; i++) {
@@ -105,46 +79,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
     let edges = triTable[cubeIndex];
-    //flood_data_with_float(index, f32(cubeIndex));
 
     for (var i: u32 = 0; i < 16 && edges[i] != -1; i += 3u) {
-       // flood_data_with_float(index, 66.0);
         for (var j: u32 = 0; j < 3; j++) {
             if (i + j > 15) {
                 continue;
             }
             let edge = edges[i + j];
-           // flood_data_with_float(index, 3.5);
             if (edge == -1) {
                 continue;
             }
             let cornersIndices = cornersIndexFromEdgeIndex[edge];
             let cornerIndex = cornersIndices[0];
             let cornerIndex2 = cornersIndices[1];
-            /*const size: u32 = 64;
-              for (var i: u32 = 0; i < size; i ++) {
-                data[(global_id.x * size) + i] = vec4<f32>(55.0, f32(cornerIndex), f32(cornerIndex), f32(cornerIndex));
-            }*/
-            //flood_data_with_float(index, 4.5);
             if (cornerIndex < 0 || cornerIndex > 7) {
                 continue;
             }
             if (cornerIndex2 < 0 || cornerIndex2 > 7) {
                 continue;
             }
-            //flood_data_with(index, vec4<f32>(42.0, f32(edge), f32(cornerIndex), f32(cornerIndex2)));
             let p1 = corner_index_to_coordinates(index, cornerIndex);
             let p2 = corner_index_to_coordinates(index, cornerIndex2);
             let middle = get_middle(p1, p2);
-            //let point = coordinates[cornerIndex];
-            data[(global_id.x * 16) + i + j] = vec4<f32>(middle.x, middle.y, middle.z, 0.0);
-            //flood_data_with(index, vec4<f32>(42.0, f32(middle.x), f32(middle.y), f32(middle.z)));
-            
-            //let point = coordinates[cornerIndex];// Doesn't crash if cornerIndex is replaced by any other thing
-            //let vertex_pos = vec3<f32>(point); 
-            //let vertex_pos2 = vec3<f32>(coordinates[cornersIndices[1]]);
-            //let middle = (vertex_pos + vertex_pos2) / 2.0;
-            //data[(global_id.x * 16) + i + j] = vec4<f32>(55, middle.y, middle.z, 0.0);
+            let coor = coordinates_to_index(index) * 12;
+            data[coor + i + j] = vec4<f32>(middle.x, middle.y, middle.z, 0.0);
         }
     }
 }

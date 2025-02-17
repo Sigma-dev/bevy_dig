@@ -1,6 +1,7 @@
 use bevy::{
     asset::RenderAssetUsages,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
+    ecs::bundle,
     input::mouse,
     math::VectorSpace,
     prelude::*,
@@ -13,12 +14,17 @@ use bevy::{
 };
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
 use generation::{
-    convert_booleans_to_buffer, make_sphere_buffer, GpuReadbackPlugin, ReadBackMarker, CHUNK_WIDTH,
+    convert_booleans_to_buffer, make_full_buffer, make_sphere_buffer, GpuReadbackPlugin,
+    ReadBackMarker, CHUNK_WIDTH,
 };
+use simulate_shader::run_simulation;
 
 mod generation;
+mod simulate_shader;
 
 fn main() {
+    //let data = run_simulation();
+
     App::new()
         .add_plugins((
             DefaultPlugins,
@@ -44,6 +50,7 @@ fn main() {
         .insert_resource(TerrainVertices(Vec::new()))
         .add_systems(Startup, setup)
         .add_systems(Update, (update_mesh, handle_inputs))
+        //.add_systems(Update, draw_simulation)
         .run();
 }
 
@@ -63,7 +70,9 @@ fn handle_inputs(
     if mouse_buttons.just_pressed(MouseButton::Left) {
         let mult = (time.elapsed_secs().sin() + 1.) / 2.;
         let mut input_buffer =
-            ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(mult)));
+            ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_full_buffer()));
+        /*     let mut input_buffer =
+        ShaderStorageBuffer::from(convert_booleans_to_buffer(&&make_sphere_buffer(mult))); */
         input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
         let handle = buffers.add(input_buffer);
         commands.insert_resource(TerrainData(handle));
@@ -93,6 +102,11 @@ fn setup(
             ..default()
         },
     ));
+
+    commands.insert_resource(AmbientLight {
+        color: Color::WHITE.into(),
+        brightness: 100.,
+    });
 
     commands.spawn((
         Mesh3d(meshes.reserve_handle()),
@@ -137,4 +151,15 @@ fn create_terrain_mesh(terrain_vertices: &Vec<Vec3>) -> Mesh {
     .with_inserted_indices(Indices::U32(indices));
     mesh.compute_smooth_normals();
     mesh
+}
+
+fn draw_simulation(mut gizmos: Gizmos) {
+    let data = run_simulation();
+    for i in 0..(data.len() - 1) {
+        let pos = data[i];
+        if pos != Vec4::ZERO {
+            gizmos.sphere(Isometry3d::from_translation(pos.xyz()), 1., Color::WHITE);
+        }
+    }
+    //println!("{:?}", data);
 }

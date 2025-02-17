@@ -18,7 +18,8 @@ const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
 pub const CHUNK_WIDTH: usize = 64;
 const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 const MAX_VERTICES_PER_CUBE: usize = 12;
-const TRI_BUFFER_LEN: usize = BUFFER_LEN * MAX_VERTICES_PER_CUBE;
+const TRI_BUFFER_LEN: usize =
+    (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_CUBE;
 
 pub(crate) struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
@@ -73,7 +74,7 @@ fn update_resource(
         commands.insert_resource::<BuildTerrain>(BuildTerrain);
         buffer.input = data.clone();
         buffers.insert(&buffer.output, make_empty_triangles_buffer());
- 
+
         let id = commands
             .spawn((Readback::buffer(buffer.output.clone()), ReadBackMarker))
             .observe(
@@ -113,6 +114,16 @@ pub fn make_sphere_buffer(radius_mult: f32) -> Vec<bool> {
         let center = Vec3::new(radius, radius, radius);
         let dist = pos.distance(center);
         if dist < radius as f32 / 2. {
+            *e = true;
+        }
+    }
+    vec
+}
+
+pub fn make_full_buffer() -> Vec<bool> {
+    let mut vec = vec![false; BUFFER_LEN];
+    for (i, e) in vec.iter_mut().enumerate() {
+        if i < BUFFER_LEN {
             *e = true;
         }
     }
@@ -164,7 +175,10 @@ fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>
 #[derive(Resource, Debug, Default)]
 struct BuildTerrain;
 
-fn extract_build_terrain(mut commands: Commands, build_terrain: Extract<Option<Res<BuildTerrain>>>) {
+fn extract_build_terrain(
+    mut commands: Commands,
+    build_terrain: Extract<Option<Res<BuildTerrain>>>,
+) {
     if build_terrain.is_some() {
         commands.init_resource::<BuildTerrain>();
     } else {
@@ -267,7 +281,11 @@ impl render_graph::Node for ComputeNode {
 
             pass.set_bind_group(0, &bind_group.0, &[]);
             pass.set_pipeline(init_pipeline);
-            pass.dispatch_workgroups(CHUNK_WIDTH as u32, CHUNK_WIDTH as u32, CHUNK_WIDTH as u32);
+            pass.dispatch_workgroups(
+                CHUNK_WIDTH as u32 + 2,
+                CHUNK_WIDTH as u32 + 2,
+                CHUNK_WIDTH as u32 + 2,
+            );
         }
         Ok(())
     }

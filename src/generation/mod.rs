@@ -51,24 +51,19 @@ pub struct ReadBackMarker;
 fn extract_resource(
     mut world: ResMut<MainWorld>,
     mut commands: Commands,
-    // res: Extract<Res<TerrainData>>,
-    maybe_buffer: Option<Res<ReadbackBuffer>>,
+    maybe_buffer: Option<ResMut<ReadbackBuffer>>,
     maybe_first: Option<Res<FirstBuild>>,
     maybe_trigger: Option<Res<BuildTerrain>>,
-    maybe_buffers: Option<ResMut<RenderAssets<GpuShaderStorageBuffer>>>,
 ) {
-    if let Some(_trigger) = maybe_trigger {
-        if (maybe_first.is_none()) {
-            //   println!("removed");
+    let Some(res) = world.get_resource_ref::<TerrainData>() else {
+        return;
+    };
+    let is_changed = res.is_changed();
+    let data = res.0.clone();
+    let maybe_buffers = world.get_resource_mut::<Assets<ShaderStorageBuffer>>();
 
-            //     if (res.0.len() != 0) {
-            //commands.remove_resource::<BuildTerrain>();
-            //  }
-        }
-    }
-    let res = world.get_resource_ref::<TerrainData>().unwrap();
-    if res.is_changed() || maybe_first.is_some() {
-        let Some(buffer) = maybe_buffer else {
+    if is_changed || maybe_first.is_some() {
+        let Some(mut buffer) = maybe_buffer else {
             return;
         };
         let Some(mut buffers) = maybe_buffers else {
@@ -76,13 +71,12 @@ fn extract_resource(
             return;
         };
         commands.remove_resource::<FirstBuild>();
-        println!("changed: {:?}", res.is_changed());
+        println!("changed: {:?}", is_changed);
         commands.insert_resource::<BuildTerrain>(BuildTerrain);
-        //let mut input_buffer = buffers.get_mut(&buffer.input).unwrap();
-        //    let mut input = ShaderStorageBuffer::from(convert_booleans_to_buffer(&res.0));
-        //      input.buffer_description.usage |= BufferUsages::COPY_SRC;
-        //        input_buffer = input;
-        //   GpuShaderStorageBuffer::from(convert_booleans_to_buffer(&res.0));
+        buffer.input = data.clone();
+        buffers.insert(&buffer.output, make_empty_triangles_buffer());
+
+        commands.remove_resource::<GpuBufferBindGroup>();
         let id = world
             .spawn((Readback::buffer(buffer.output.clone()), ReadBackMarker))
             .observe(
@@ -152,35 +146,20 @@ impl ReadbackBuffer {
     }
 }
 
+fn make_empty_triangles_buffer() -> ShaderStorageBuffer {
+    let mut output_buffer = ShaderStorageBuffer::from(vec![Vec4::ZERO; TRI_BUFFER_LEN]);
+    output_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
+    output_buffer
+}
+
 fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>>) {
     let mut input_buffer =
         ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(1.)));
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
-    let mut output_buffer = ShaderStorageBuffer::from(vec![Vec4::ZERO; TRI_BUFFER_LEN]);
-    output_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
-
+    let output_buffer = make_empty_triangles_buffer();
     let input_handle = buffers.add(input_buffer);
     let output_handle = buffers.add(output_buffer);
     println!("output: {:?}", output_handle);
-
-    /*     commands
-    .spawn(Readback::buffer(output_handle.clone()))
-    .observe(
-        |trigger: Trigger<ReadbackComplete>,
-         mut terrain_vertices: ResMut<TerrainVertices>,
-         mut commands: Commands| {
-            let data: Vec<Vec4> = trigger.event().to_shader_type();
-            let filtered: Vec<&Vec4> = data.iter().filter(|v| **v != Vec4::splat(0.)).collect();
-
-            let vertices: Vec<Vec3> = filtered.iter().map(|v4| v4.xyz()).collect();
-            println!("Readback {:?}", vertices.len());
-            if terrain_vertices.0.len() == 0 && vertices.len() > 0 {
-                *terrain_vertices = TerrainVertices(vertices);
-                println!("despawn");
-                commands.entity(trigger.entity()).despawn();
-            }
-        },
-    ); */
 
     commands.insert_resource(ReadbackBuffer::new(input_handle, output_handle));
 }
@@ -203,6 +182,7 @@ fn prepare_bind_group(
 ) {
     let input_buffer: &GpuShaderStorageBuffer = buffers.get(&buffer.input).unwrap();
     let output_buffer: &GpuShaderStorageBuffer = buffers.get(&buffer.output).unwrap();
+    println!("{:?}", output_buffer.buffer);
     let bind_group = render_device.create_bind_group(
         None,
         &pipeline.layout,
@@ -271,7 +251,7 @@ impl render_graph::Node for ComputeNode {
         let buffer = world.resource::<ReadbackBuffer>();
 
         if let Some(init_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline) {
-            //println!("Passed");
+            println!("Passed");
             let mut pass =
                 render_context
                     .command_encoder()

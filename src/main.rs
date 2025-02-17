@@ -2,12 +2,19 @@ use bevy::{
     asset::RenderAssetUsages,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     input::mouse,
+    math::VectorSpace,
     prelude::*,
-    render::mesh::{Indices, PrimitiveTopology},
+    render::{
+        mesh::{Indices, PrimitiveTopology},
+        render_resource::BufferUsages,
+        storage::ShaderStorageBuffer,
+    },
     text::FontSmoothing,
 };
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
-use generation::{make_sphere_buffer, GpuReadbackPlugin, ReadBackMarker};
+use generation::{
+    convert_booleans_to_buffer, make_sphere_buffer, GpuReadbackPlugin, ReadBackMarker, CHUNK_WIDTH,
+};
 
 mod generation;
 
@@ -35,7 +42,6 @@ fn main() {
         ))
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(TerrainVertices(Vec::new()))
-        .insert_resource(TerrainData(Vec::new()))
         .add_systems(Startup, setup)
         .add_systems(Update, (update_mesh, handle_inputs))
         .run();
@@ -45,22 +51,36 @@ fn main() {
 pub struct TerrainVertices(Vec<Vec3>);
 
 #[derive(Resource, Debug)]
-pub struct TerrainData(Vec<bool>);
+pub struct TerrainData(Handle<ShaderStorageBuffer>);
 
 fn handle_inputs(
-    mut terrain: ResMut<TerrainData>,
+    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     readback_q: Query<&ReadBackMarker>,
     time: Res<Time>,
+    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
     if mouse_buttons.just_pressed(MouseButton::Left) {
         let mult = (time.elapsed_secs().sin() + 1.) / 2.;
-        terrain.0 = make_sphere_buffer(mult);
+        let mut input_buffer =
+            ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(mult)));
+        input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
+        let handle = buffers.add(input_buffer);
+        commands.insert_resource(TerrainData(handle));
     }
 }
 
-fn setup(mut commands: Commands, terrain_vertices: Res<TerrainVertices>) {
-    commands.spawn((Camera3d::default(), EditorCam::default()));
+fn setup(
+    mut commands: Commands,
+    terrain_vertices: Res<TerrainVertices>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    commands.spawn((
+        Camera3d::default(),
+        EditorCam::default(),
+        Transform::from_translation(Vec3::splat(50.)).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 
     commands.spawn((
         DirectionalLight {
@@ -73,24 +93,33 @@ fn setup(mut commands: Commands, terrain_vertices: Res<TerrainVertices>) {
             ..default()
         },
     ));
+
+    commands.spawn((
+        Mesh3d(meshes.reserve_handle()),
+        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+        Terrain,
+        Transform::from_translation(-Vec3::splat(CHUNK_WIDTH as f32) / 2.),
+    ));
 }
+
+#[derive(Component)]
+struct Terrain;
 
 fn update_mesh(
     mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_vertices: Res<TerrainVertices>,
+    mut terrain_q: Query<&mut Mesh3d, With<Terrain>>,
 ) {
     if !terrain_vertices.is_changed() || terrain_vertices.0.len() == 0 {
         return;
     }
-    let terrain_mesh_handle: Handle<Mesh> = meshes.add(create_terrain_mesh(&terrain_vertices.0));
+    for terrain in terrain_q.iter() {
+        meshes.insert(&terrain.0, create_terrain_mesh(&terrain_vertices.0));
+        //let terrain_mesh_handle: Handle<Mesh> = meshes.add(create_terrain_mesh(&terrain_vertices.0));
+    }
 
     println!("building mesh");
-    commands.spawn((
-        Mesh3d(terrain_mesh_handle),
-        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
-    ));
 }
 
 fn create_terrain_mesh(terrain_vertices: &Vec<Vec3>) -> Mesh {

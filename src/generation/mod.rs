@@ -24,7 +24,8 @@ pub(crate) struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractResourcePlugin::<ReadbackBuffer>::default())
-            .add_systems(Startup, setup);
+            .add_systems(Startup, setup)
+            .add_systems(PostUpdate, update_resource);
     }
 
     fn finish(&self, app: &mut App) {
@@ -33,11 +34,11 @@ impl Plugin for GpuReadbackPlugin {
             Render,
             prepare_bind_group
                 .in_set(RenderSet::PrepareBindGroups)
-                .run_if(not(resource_exists::<GpuBufferBindGroup>)),
+                .run_if(resource_exists::<BuildTerrain>),
         );
 
         render_app
-            .add_systems(ExtractSchedule, extract_resource)
+            .add_systems(ExtractSchedule, extract_build_terrain)
             .insert_resource::<FirstBuild>(FirstBuild)
             .world_mut()
             .resource_mut::<RenderGraph>()
@@ -48,26 +49,23 @@ impl Plugin for GpuReadbackPlugin {
 #[derive(Component)]
 pub struct ReadBackMarker;
 
-fn extract_resource(
-    mut world: ResMut<MainWorld>,
+fn update_resource(
+    terrain_data: Option<Res<TerrainData>>,
     mut commands: Commands,
     maybe_buffer: Option<ResMut<ReadbackBuffer>>,
     maybe_first: Option<Res<FirstBuild>>,
     maybe_trigger: Option<Res<BuildTerrain>>,
+    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
-    let Some(res) = world.get_resource_ref::<TerrainData>() else {
+    commands.remove_resource::<BuildTerrain>();
+    let Some(res) = terrain_data else {
         return;
     };
     let is_changed = res.is_changed();
     let data = res.0.clone();
-    let maybe_buffers = world.get_resource_mut::<Assets<ShaderStorageBuffer>>();
 
     if is_changed || maybe_first.is_some() {
         let Some(mut buffer) = maybe_buffer else {
-            return;
-        };
-        let Some(mut buffers) = maybe_buffers else {
-            println!("No buffers");
             return;
         };
         commands.remove_resource::<FirstBuild>();
@@ -75,9 +73,8 @@ fn extract_resource(
         commands.insert_resource::<BuildTerrain>(BuildTerrain);
         buffer.input = data.clone();
         buffers.insert(&buffer.output, make_empty_triangles_buffer());
-
-        commands.remove_resource::<GpuBufferBindGroup>();
-        let id = world
+ 
+        let id = commands
             .spawn((Readback::buffer(buffer.output.clone()), ReadBackMarker))
             .observe(
                 |trigger: Trigger<ReadbackComplete>,
@@ -164,8 +161,16 @@ fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>
     commands.insert_resource(ReadbackBuffer::new(input_handle, output_handle));
 }
 
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 struct BuildTerrain;
+
+fn extract_build_terrain(mut commands: Commands, build_terrain: Extract<Option<Res<BuildTerrain>>>) {
+    if build_terrain.is_some() {
+        commands.init_resource::<BuildTerrain>();
+    } else {
+        commands.remove_resource::<BuildTerrain>();
+    }
+}
 
 #[derive(Resource, Debug)]
 struct FirstBuild;

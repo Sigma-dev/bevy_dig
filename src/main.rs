@@ -2,7 +2,8 @@ use bevy::{
     asset::RenderAssetUsages,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     ecs::bundle,
-    input::mouse,
+    gizmos,
+    input::mouse::{self, MouseScrollUnit, MouseWheel},
     math::VectorSpace,
     prelude::*,
     render::{
@@ -18,9 +19,11 @@ use generation::{
     ReadBackMarker, CHUNK_WIDTH,
 };
 use simulate_shader::run_simulation;
+use voxel::VoxelChunk;
 
 mod generation;
 mod simulate_shader;
+mod voxel;
 
 fn main() {
     //let data = run_simulation();
@@ -48,8 +51,11 @@ fn main() {
         ))
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(TerrainVertices(Vec::new()))
+        .insert_resource(VoxelPointerPosition(None))
+        .insert_resource(VoxelData(VoxelChunk::full()))
+        .insert_resource(VoxelPointerSize(20.))
         .add_systems(Startup, setup)
-        .add_systems(Update, (update_mesh, handle_inputs))
+        .add_systems(Update, (update_mesh, handle_inputs, handle_voxel_changes))
         //.add_systems(Update, draw_simulation)
         .run();
 }
@@ -60,14 +66,55 @@ pub struct TerrainVertices(Vec<Vec3>);
 #[derive(Resource, Debug)]
 pub struct TerrainData(Handle<ShaderStorageBuffer>);
 
+#[derive(Resource, Debug)]
+pub struct VoxelData(VoxelChunk);
+
+#[derive(Resource)]
+pub struct VoxelPointerPosition(Option<Vec3>);
+
+#[derive(Resource)]
+pub struct VoxelPointerSize(f32);
+
 fn handle_inputs(
     mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     readback_q: Query<&ReadBackMarker>,
     time: Res<Time>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
+    voxel_pos: Res<VoxelPointerPosition>,
+    mut voxel_data: ResMut<VoxelData>,
+    mut evr_scroll: EventReader<MouseWheel>,
+    mut voxel_size: ResMut<VoxelPointerSize>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut gizmos: Gizmos,
 ) {
+    let Some(pos) = voxel_pos.0 else {
+        return;
+    };
+    gizmos.sphere(
+        Isometry3d::from_translation(
+            pos - Vec3::new(
+                CHUNK_WIDTH as f32 / 2.,
+                CHUNK_WIDTH as f32 / 2.,
+                CHUNK_WIDTH as f32 / 2.,
+            ),
+        ),
+        voxel_size.0,
+        Color::WHITE,
+    );
     if mouse_buttons.just_pressed(MouseButton::Left) {
+        voxel_data.0.dig_hole(pos, voxel_size.0);
+    }
+    if keys.just_pressed(KeyCode::KeyB) {
+        voxel_data.0.build_sphere(pos, voxel_size.0);
+    }
+    if keys.just_pressed(KeyCode::KeyQ) {
+        voxel_size.0 -= 5.;
+    }
+    if keys.just_pressed(KeyCode::KeyW) {
+        voxel_size.0 += 5.;
+    }
+    /*  if mouse_buttons.just_pressed(MouseButton::Left) {
         let mult = (time.elapsed_secs().sin() + 1.) / 2.;
         let mut input_buffer =
             ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_full_buffer()));
@@ -76,7 +123,25 @@ fn handle_inputs(
         input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
         let handle = buffers.add(input_buffer);
         commands.insert_resource(TerrainData(handle));
+    } */
+}
+
+fn handle_voxel_changes(
+    mut commands: Commands,
+    voxels: Res<VoxelData>,
+    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
+) {
+    if !voxels.is_changed() {
+        return;
     }
+    println!("yep");
+    let vec = convert_booleans_to_buffer(&voxels.0.raw().to_vec());
+    let mut input_buffer = ShaderStorageBuffer::from(vec);
+    /*  let mut input_buffer =
+    ShaderStorageBuffer::from(convert_booleans_to_buffer(&&make_sphere_buffer(1.))); */
+    input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
+    let handle = buffers.add(input_buffer);
+    commands.insert_resource(TerrainData(handle));
 }
 
 fn setup(
@@ -108,12 +173,49 @@ fn setup(
         brightness: 100.,
     });
 
-    commands.spawn((
-        Mesh3d(meshes.reserve_handle()),
-        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
-        Terrain,
-        Transform::from_translation(-Vec3::splat(CHUNK_WIDTH as f32) / 2.),
-    ));
+    commands
+        .spawn((
+            Mesh3d(meshes.reserve_handle()),
+            MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+            Terrain,
+            Transform::from_translation(-Vec3::splat(CHUNK_WIDTH as f32) / 2.),
+        ))
+        .observe(
+            |trigger: Trigger<Pointer<Move>>, mut voxel_pos: ResMut<VoxelPointerPosition>| {
+                let Some(pos) = trigger.hit.position else {
+                    return;
+                };
+                voxel_pos.0 = Some(
+                    pos + Vec3::new(
+                        CHUNK_WIDTH as f32 / 2.,
+                        CHUNK_WIDTH as f32 / 2.,
+                        CHUNK_WIDTH as f32 / 2.,
+                    ),
+                );
+            },
+        )
+        .observe(
+            |trigger: Trigger<Pointer<Out>>, mut voxel_pos: ResMut<VoxelPointerPosition>| {
+                voxel_pos.0 = None;
+            },
+        );
+    /* .observe(
+        |trigger: Trigger<Pointer<Down>>, mut voxels: ResMut<VoxelData>| {
+            if trigger.button != PointerButton::Primary {
+                return;
+            }
+            let Some(pos) = trigger.hit.position else {
+                return;
+            };
+            let offset = pos
+                + Vec3::new(
+                    CHUNK_WIDTH as f32 / 2.,
+                    CHUNK_WIDTH as f32 / 2.,
+                    CHUNK_WIDTH as f32 / 2.,
+                );
+            voxels.0.dig_hole(offset, 20.);
+        },
+    ); */
 }
 
 #[derive(Component)]
@@ -124,6 +226,7 @@ fn update_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_vertices: Res<TerrainVertices>,
     mut terrain_q: Query<&mut Mesh3d, With<Terrain>>,
+    mut gizmos: Gizmos,
 ) {
     if !terrain_vertices.is_changed() || terrain_vertices.0.len() == 0 {
         return;
@@ -133,7 +236,7 @@ fn update_mesh(
         //let terrain_mesh_handle: Handle<Mesh> = meshes.add(create_terrain_mesh(&terrain_vertices.0));
     }
 
-    println!("building mesh");
+    // println!("building mesh");
 }
 
 fn create_terrain_mesh(terrain_vertices: &Vec<Vec3>) -> Mesh {

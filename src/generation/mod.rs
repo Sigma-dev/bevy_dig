@@ -12,11 +12,11 @@ use bevy::{
     },
 };
 
-use crate::{TerrainData, TerrainVertices};
+use crate::{voxel::VoxelChunk, TerrainData, TerrainVertices};
 const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
 
 pub const CHUNK_WIDTH: usize = 64;
-const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+pub const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 const MAX_VERTICES_PER_CUBE: usize = 12;
 const TRI_BUFFER_LEN: usize =
     (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_CUBE;
@@ -134,6 +134,10 @@ pub fn convert_booleans_to_buffer(booleans: &Vec<bool>) -> Vec<u32> {
     booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
 }
 
+pub fn convert_booleans_arr_to_buffer(booleans: &[bool; BUFFER_LEN as usize]) -> Vec<u32> {
+    booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
+}
+
 #[derive(Resource, ExtractResource, Clone, Debug)]
 pub struct ReadbackBuffer {
     input: Handle<ShaderStorageBuffer>,
@@ -163,6 +167,8 @@ fn make_empty_triangles_buffer() -> ShaderStorageBuffer {
 fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>>) {
     let mut input_buffer =
         ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(1.)));
+    /*  let mut input_buffer =
+    ShaderStorageBuffer::from(convert_booleans_to_buffer(&VoxelChunk::empty().raw())); */
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let output_buffer = make_empty_triangles_buffer();
     let input_handle = buffers.add(input_buffer);

@@ -1,0 +1,16 @@
+Steps to MVP:
+Step 1 Get one editable chunk to reliably generate: X
+ - Get one editable chunk to unreliably generate V
+
+Step 2 Make a character controller that can walk and collide with it
+ - Try a traditional physics approach
+
+
+
+
+Keep in mind:
+There must be no freezes while editing the terrain, and the game should be able to play at 144hz easily.
+
+Performance tricks available:
+Splitting the terrain into smaller size
+Keep the mesh data on the GPU side and approximate collisions with the voxel data

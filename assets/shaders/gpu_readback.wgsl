@@ -1,6 +1,6 @@
 @group(0) @binding(0) var<storage, read_write> input_data: array<u32>;
 @group(0) @binding(1) var<storage, read_write> data: array<vec4<f32>>;
-const CHUNK_WIDTH: u32 = 64;
+const CHUNK_WIDTH: u32 = 32;
 const MAX_VERTICES_PER_VOXEL: u32 = 12;
 const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 /*

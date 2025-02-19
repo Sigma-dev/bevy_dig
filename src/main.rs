@@ -1,10 +1,6 @@
 use bevy::{
     asset::RenderAssetUsages,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
-    ecs::bundle,
-    gizmos,
-    input::mouse::{self, MouseScrollUnit, MouseWheel},
-    math::VectorSpace,
     prelude::*,
     render::{
         mesh::{Indices, PrimitiveTopology},
@@ -14,10 +10,7 @@ use bevy::{
     text::FontSmoothing,
 };
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
-use generation::{
-    convert_booleans_to_buffer, make_full_buffer, make_sphere_buffer, GpuReadbackPlugin,
-    ReadBackMarker, CHUNK_WIDTH,
-};
+use generation::{convert_booleans_to_buffer, GpuReadbackPlugin, CHUNK_WIDTH};
 use simulate_shader::run_simulation;
 use voxel::VoxelChunk;
 
@@ -50,18 +43,18 @@ fn main() {
             DefaultEditorCamPlugins,
         ))
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(TerrainVertices(Vec::new()))
+        .insert_resource(TerrainVertices(Vec::new(), Vec::new(), Vec::new()))
         .insert_resource(VoxelPointerPosition(None))
-        .insert_resource(VoxelData(VoxelChunk::full()))
         .insert_resource(VoxelPointerSize(20.))
         .add_systems(Startup, setup)
         .add_systems(Update, (update_mesh, handle_inputs, handle_voxel_changes))
+        .add_systems(Update, one_time)
         //.add_systems(Update, draw_simulation)
         .run();
 }
 
 #[derive(Resource, Debug)]
-pub struct TerrainVertices(Vec<Vec3>);
+pub struct TerrainVertices(Vec<Vec3>, Vec<usize>, Vec<Vec3>);
 
 #[derive(Resource, Debug)]
 pub struct TerrainData(Handle<ShaderStorageBuffer>);
@@ -76,18 +69,16 @@ pub struct VoxelPointerPosition(Option<Vec3>);
 pub struct VoxelPointerSize(f32);
 
 fn handle_inputs(
-    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    readback_q: Query<&ReadBackMarker>,
-    time: Res<Time>,
-    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     voxel_pos: Res<VoxelPointerPosition>,
-    mut voxel_data: ResMut<VoxelData>,
-    mut evr_scroll: EventReader<MouseWheel>,
+    maybe_voxel_data: Option<ResMut<VoxelData>>,
     mut voxel_size: ResMut<VoxelPointerSize>,
     keys: Res<ButtonInput<KeyCode>>,
     mut gizmos: Gizmos,
 ) {
+    let Some(mut voxel_data) = maybe_voxel_data else {
+        return;
+    };
     let Some(pos) = voxel_pos.0 else {
         return;
     };
@@ -114,23 +105,20 @@ fn handle_inputs(
     if keys.just_pressed(KeyCode::KeyW) {
         voxel_size.0 += 5.;
     }
-    /*  if mouse_buttons.just_pressed(MouseButton::Left) {
-        let mult = (time.elapsed_secs().sin() + 1.) / 2.;
-        let mut input_buffer =
-            ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_full_buffer()));
-        /*     let mut input_buffer =
-        ShaderStorageBuffer::from(convert_booleans_to_buffer(&&make_sphere_buffer(mult))); */
-        input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
-        let handle = buffers.add(input_buffer);
-        commands.insert_resource(TerrainData(handle));
-    } */
+}
+
+fn one_time(mut commands: Commands, time: Res<Time>, maybe_data: Option<Res<VoxelData>>) {
+    if time.elapsed_secs() > 0.01 && maybe_data.is_none() {
+        commands.insert_resource(VoxelData(VoxelChunk::full()))
+    }
 }
 
 fn handle_voxel_changes(
     mut commands: Commands,
-    voxels: Res<VoxelData>,
+    maybe_voxels: Option<Res<VoxelData>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
+    let Some(voxels) = maybe_voxels else { return };
     if !voxels.is_changed() {
         return;
     }
@@ -146,9 +134,8 @@ fn handle_voxel_changes(
 
 fn setup(
     mut commands: Commands,
-    terrain_vertices: Res<TerrainVertices>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.spawn((
         Camera3d::default(),
@@ -176,7 +163,11 @@ fn setup(
     commands
         .spawn((
             Mesh3d(meshes.reserve_handle()),
-            MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.34, 0.2, 0.2),
+                perceptual_roughness: 1.,
+                ..default()
+            })),
             Terrain,
             Transform::from_translation(-Vec3::splat(CHUNK_WIDTH as f32) / 2.),
         ))
@@ -195,34 +186,16 @@ fn setup(
             },
         )
         .observe(
-            |trigger: Trigger<Pointer<Out>>, mut voxel_pos: ResMut<VoxelPointerPosition>| {
+            |_trigger: Trigger<Pointer<Out>>, mut voxel_pos: ResMut<VoxelPointerPosition>| {
                 voxel_pos.0 = None;
             },
         );
-    /* .observe(
-        |trigger: Trigger<Pointer<Down>>, mut voxels: ResMut<VoxelData>| {
-            if trigger.button != PointerButton::Primary {
-                return;
-            }
-            let Some(pos) = trigger.hit.position else {
-                return;
-            };
-            let offset = pos
-                + Vec3::new(
-                    CHUNK_WIDTH as f32 / 2.,
-                    CHUNK_WIDTH as f32 / 2.,
-                    CHUNK_WIDTH as f32 / 2.,
-                );
-            voxels.0.dig_hole(offset, 20.);
-        },
-    ); */
 }
 
 #[derive(Component)]
 struct Terrain;
 
 fn update_mesh(
-    mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     terrain_vertices: Res<TerrainVertices>,
     mut terrain_q: Query<&mut Mesh3d, With<Terrain>>,
@@ -232,37 +205,28 @@ fn update_mesh(
         return;
     }
     for terrain in terrain_q.iter() {
-        meshes.insert(&terrain.0, create_terrain_mesh(&terrain_vertices.0));
-        //let terrain_mesh_handle: Handle<Mesh> = meshes.add(create_terrain_mesh(&terrain_vertices.0));
+        //meshes.insert(&terrain.0, create_terrain_mesh(&terrain_vertices.0));
+        meshes.insert(
+            &terrain.0,
+            create_terrain_mesh(&terrain_vertices.1, &terrain_vertices.2),
+        );
     }
-
-    // println!("building mesh");
 }
 
-fn create_terrain_mesh(terrain_vertices: &Vec<Vec3>) -> Mesh {
-    let triangles: Vec<[f32; 3]> = terrain_vertices.iter().map(|v| [v.x, v.y, v.z]).collect();
+fn create_terrain_mesh(indices: &Vec<usize>, uniques: &Vec<Vec3>) -> Mesh {
+    /*   let triangles: Vec<[f32; 3]> = terrain_vertices.iter().map(|v| [v.x, v.y, v.z]).collect();
     let indices = terrain_vertices
         .iter()
         .enumerate()
         .map(|(i, _)| i as u32)
-        .collect();
+        .collect();*/
+    let indices_u32: Vec<u32> = indices.iter().map(|i| *i as u32).collect();
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, triangles)
-    .with_inserted_indices(Indices::U32(indices));
-    mesh.compute_smooth_normals();
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, uniques.clone())
+    .with_inserted_indices(Indices::U32(indices_u32))
+    .with_computed_normals();
     mesh
-}
-
-fn draw_simulation(mut gizmos: Gizmos) {
-    let data = run_simulation();
-    for i in 0..(data.len() - 1) {
-        let pos = data[i];
-        if pos != Vec4::ZERO {
-            gizmos.sphere(Isometry3d::from_translation(pos.xyz()), 1., Color::WHITE);
-        }
-    }
-    //println!("{:?}", data);
 }

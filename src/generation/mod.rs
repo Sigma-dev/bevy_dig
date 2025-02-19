@@ -1,3 +1,5 @@
+use std::{collections::BTreeMap, ops::Index};
+
 use bevy::{
     prelude::*,
     render::{
@@ -10,12 +12,13 @@ use bevy::{
         storage::*,
         *,
     },
+    utils::hashbrown::{HashMap, HashSet},
 };
 
 use crate::{voxel::VoxelChunk, TerrainData, TerrainVertices};
 const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
 
-pub const CHUNK_WIDTH: usize = 64;
+pub const CHUNK_WIDTH: usize = 32;
 pub const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 const MAX_VERTICES_PER_CUBE: usize = 12;
 const TRI_BUFFER_LEN: usize =
@@ -84,11 +87,13 @@ fn update_resource(
                     let data: Vec<Vec4> = trigger.event().to_shader_type();
                     let filtered: Vec<&Vec4> =
                         data.iter().filter(|v| **v != Vec4::splat(0.)).collect();
+                    let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
 
                     let vertices: Vec<Vec3> = filtered.iter().map(|v4| v4.xyz()).collect();
+                    let uniques: Vec<Vec3> = unique.iter().map(|v4| v4.xyz()).collect();
                     println!("Readback {:?}", vertices.len());
                     if vertices.len() > 0 {
-                        *terrain_vertices = TerrainVertices(vertices);
+                        *terrain_vertices = TerrainVertices(vertices, indices, uniques);
                         println!("despawn");
                         commanads.entity(trigger.entity()).despawn();
                     }
@@ -96,6 +101,94 @@ fn update_resource(
             )
             .id();
     }
+}
+
+/// Trait for tolerance-based equality comparison.
+trait ApproxEq {
+    fn approx_eq(&self, other: &Self, epsilon: f32) -> bool;
+}
+
+/// Trait for spatial hashing.
+trait SpatialHash {
+    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32, i32);
+}
+
+impl ApproxEq for Vec4 {
+    /// Compare two `Vec4` values with a tolerance for floating-point inaccuracies.
+    fn approx_eq(&self, other: &Vec4, epsilon: f32) -> bool {
+        (self.x - other.x).abs() < epsilon
+            && (self.y - other.y).abs() < epsilon
+            && (self.z - other.z).abs() < epsilon
+            && (self.w - other.w).abs() < epsilon
+    }
+}
+
+impl SpatialHash for Vec4 {
+    /// Spatial hash function: rounds coordinates to a grid of size `epsilon`.
+    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32, i32) {
+        (
+            (self.x / epsilon).round() as i32,
+            (self.y / epsilon).round() as i32,
+            (self.z / epsilon).round() as i32,
+            (self.w / epsilon).round() as i32,
+        )
+    }
+}
+
+/* fn deduplicate_vertices(vec: &Vec<&Vec4>) -> (Vec<usize>, Vec<Vec4>) {
+    let mut unique_pos: Vec<Vec4> = Vec::new();
+    let mut indices: Vec<usize> = Vec::new();
+
+    for pos in vec {
+        if let Some(index) = unique_pos.iter().position(|p| p == *pos) {
+            indices.push(index)
+        } else {
+            unique_pos.push(**pos);
+            indices.push(unique_pos.len() - 1);
+        }
+    }
+    /*
+    let test: Vec<Vec4> = indices.iter().map(|i| unique_floats[*i]).collect();
+
+    let test2: Vec<Vec4> = vec.iter().map(|v| **v).collect();
+    if (test2 == test) {
+        println!("yes !");
+    } */
+    return (indices, unique_pos);
+} */
+fn deduplicate_vertices(vec: &Vec<&Vec4>, epsilon: f32) -> (Vec<usize>, Vec<Vec4>) {
+    let mut unique_pos: Vec<Vec4> = Vec::new();
+    let mut indices: Vec<usize> = Vec::new();
+    let mut hash_map: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
+
+    for pos in vec {
+        let hash = pos.spatial_hash(epsilon);
+        let mut found_index = None;
+
+        // Check only vertices in the same spatial hash bucket
+        if let Some(bucket) = hash_map.get(&hash) {
+            for &index in bucket {
+                if unique_pos[index].approx_eq(pos, epsilon) {
+                    found_index = Some(index);
+                    break;
+                }
+            }
+        }
+
+        if let Some(index) = found_index {
+            indices.push(index);
+        } else {
+            let new_index = unique_pos.len();
+            unique_pos.push(**pos);
+            indices.push(new_index);
+            hash_map
+                .entry(hash)
+                .or_insert_with(Vec::new)
+                .push(new_index);
+        }
+    }
+
+    (indices, unique_pos)
 }
 
 pub fn index_to_coordinates(index: usize) -> Vec3 {

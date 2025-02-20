@@ -30,20 +30,21 @@ fn modify_voxels(
     };
     gizmos.sphere(
         Isometry3d::from_translation(
-            pos - Vec3::new(
-                CHUNK_WIDTH as f32 / 2.,
-                CHUNK_WIDTH as f32 / 2.,
-                CHUNK_WIDTH as f32 / 2.,
-            ),
+            pos.1
+                - Vec3::new(
+                    CHUNK_WIDTH as f32 / 2.,
+                    CHUNK_WIDTH as f32 / 2.,
+                    CHUNK_WIDTH as f32 / 2.,
+                ),
         ),
         voxel_size.0,
         Color::WHITE,
     );
     if mouse_buttons.just_pressed(MouseButton::Left) {
-        voxel_data.0.dig_hole(pos, voxel_size.0);
+        voxel_data.0.dig_hole(pos.1, voxel_size.0);
     }
     if keys.just_pressed(KeyCode::KeyB) {
-        voxel_data.0.build_sphere(pos, voxel_size.0);
+        voxel_data.0.build_sphere(pos.1, voxel_size.0);
     }
 }
 
@@ -64,7 +65,7 @@ fn spawn_sphere(
             Collider::sphere(1.),
             Mass(1.),
             RigidBody::Dynamic,
-            Transform::from_translation(pos + Vec3::Y * 10.),
+            Transform::from_translation(pos.0 + Vec3::Y * 10.),
         ));
     }
 }

@@ -1,4 +1,7 @@
-use avian3d::PhysicsPlugins;
+use avian3d::{
+    prelude::{Collider, RigidBody, SleepingPlugin},
+    PhysicsPlugins,
+};
 use bevy::{
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     prelude::*,
@@ -34,7 +37,9 @@ fn main() {
             },
             GpuReadbackPlugin,
             MeshPickingPlugin,
-            PhysicsPlugins::default(),
+            PhysicsPlugins::default()
+                .build()
+                .disable::<SleepingPlugin>(),
             VoxelInteractionPlugin,
             DefaultEditorCamPlugins,
         ))
@@ -56,7 +61,7 @@ pub struct TerrainData(Handle<ShaderStorageBuffer>);
 pub struct VoxelData(VoxelChunk);
 
 #[derive(Resource)]
-pub struct VoxelPointerPosition(Option<Vec3>);
+pub struct VoxelPointerPosition(Option<(Vec3, Vec3)>);
 
 #[derive(Resource)]
 pub struct ChunksToGenerateQueue(VecDeque<ChunksToGenerateQueueElement>);
@@ -135,11 +140,17 @@ fn update_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mesh_chunk_r: EventReader<ChunkMeshGenerated>,
-    terrain_q: Query<(&Mesh3d, &ChunkMesh)>,
+    terrain_q: Query<(Entity, &Mesh3d, &ChunkMesh)>,
 ) {
     for ev in mesh_chunk_r.read() {
-        if let Some((mesh, _)) = terrain_q.iter().find(|(_, chunk)| chunk.index == ev.index) {
+        let collider = Collider::trimesh_from_mesh(&ev.mesh).unwrap();
+
+        if let Some((entity, mesh, _)) = terrain_q
+            .iter()
+            .find(|(_, _, chunk)| chunk.index == ev.index)
+        {
             meshes.insert(mesh, ev.mesh.clone());
+            commands.entity(entity).insert(collider);
         } else {
             commands
                 .spawn((
@@ -151,6 +162,8 @@ fn update_mesh(
                     })),
                     ChunkMesh { index: ev.index },
                     Transform::from_translation(-Vec3::splat(CHUNK_WIDTH as f32) / 2.),
+                    RigidBody::Static,
+                    collider,
                 ))
                 .observe(
                     |trigger: Trigger<Pointer<Move>>,
@@ -158,13 +171,14 @@ fn update_mesh(
                         let Some(pos) = trigger.hit.position else {
                             return;
                         };
-                        voxel_pos.0 = Some(
+                        voxel_pos.0 = Some((
+                            pos,
                             pos + Vec3::new(
                                 CHUNK_WIDTH as f32 / 2.,
                                 CHUNK_WIDTH as f32 / 2.,
                                 CHUNK_WIDTH as f32 / 2.,
                             ),
-                        );
+                        ));
                     },
                 )
                 .observe(

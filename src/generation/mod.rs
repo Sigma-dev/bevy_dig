@@ -90,7 +90,7 @@ fn update_resource(
                     let readback: Vec<Vec4> = trigger.event().to_shader_type();
                     let filtered: Vec<Vec3> = readback
                         .iter()
-                        .filter(|v| **v != Vec4::splat(0.))
+                        .filter(|v| v.w != -1.)
                         .map(|v4| v4.xyz())
                         .collect();
                     let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
@@ -98,7 +98,6 @@ fn update_resource(
                     if indices.len() > 0 {
                         let mesh = create_terrain_mesh(&indices, &unique);
                         chunk_mesh_w.send(ChunkMeshGenerated::new(UVec3::ZERO, mesh));
-                        println!("despawn");
                         commanads.entity(trigger.entity()).despawn();
                     }
                 },
@@ -171,28 +170,6 @@ fn deduplicate_vertices(vec: &Vec<Vec3>, epsilon: f32) -> (Vec<usize>, Vec<Vec3>
     (indices, unique_pos)
 }
 
-pub fn index_to_coordinates(index: usize) -> Vec3 {
-    return Vec3::new(
-        index as f32 % CHUNK_WIDTH as f32,
-        (index as f32 / CHUNK_WIDTH as f32) % CHUNK_WIDTH as f32,
-        index as f32 / (CHUNK_WIDTH as f32 * CHUNK_WIDTH as f32),
-    );
-}
-
-pub fn make_sphere_buffer(radius_mult: f32) -> Vec<bool> {
-    let radius = CHUNK_WIDTH as f32 / 2.0 * radius_mult;
-    let mut vec = vec![false; BUFFER_LEN];
-    for (i, e) in vec.iter_mut().enumerate() {
-        let pos = index_to_coordinates(i);
-        let center = Vec3::new(radius, radius, radius);
-        let dist = pos.distance(center);
-        if dist < radius as f32 / 2. {
-            *e = true;
-        }
-    }
-    vec
-}
-
 pub fn convert_booleans_to_buffer(booleans: &Vec<bool>) -> Vec<u32> {
     booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
 }
@@ -213,21 +190,17 @@ impl ReadbackBuffer {
 }
 
 fn make_empty_triangles_buffer() -> ShaderStorageBuffer {
-    let mut output_buffer = ShaderStorageBuffer::from(vec![Vec4::ZERO; TRI_BUFFER_LEN]);
+    let mut output_buffer =
+        ShaderStorageBuffer::from(vec![Vec4::new(0., 0., 0., -1.); TRI_BUFFER_LEN]);
     output_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     output_buffer
 }
 
-fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>>) {
-    let mut input_buffer =
-        ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(1.)));
-    input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
-    let output_buffer = make_empty_triangles_buffer();
-    let input_handle = buffers.add(input_buffer);
-    let output_handle = buffers.add(output_buffer);
-    println!("output: {:?}", output_handle);
-
-    commands.insert_resource(ReadbackBuffer::new(input_handle, output_handle));
+fn setup(mut commands: Commands, buffers: Res<Assets<ShaderStorageBuffer>>) {
+    commands.insert_resource(ReadbackBuffer::new(
+        buffers.reserve_handle(),
+        buffers.reserve_handle(),
+    ));
 }
 
 #[derive(Resource, Debug, Default)]

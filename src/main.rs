@@ -6,8 +6,11 @@ use bevy::{
     text::FontSmoothing,
 };
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
-use generation::{convert_booleans_to_buffer, ChunkMeshGenerated, GpuReadbackPlugin, CHUNK_WIDTH};
+use generation::{
+    convert_booleans_to_buffer, ChunkMeshGenerated, GpuReadbackPlugin, BUFFER_LEN, CHUNK_WIDTH,
+};
 use interaction::VoxelInteractionPlugin;
+use std::collections::VecDeque;
 use voxel::VoxelChunk;
 
 mod generation;
@@ -37,8 +40,12 @@ fn main() {
         ))
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(VoxelPointerPosition(None))
+        .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
         .add_systems(Startup, setup)
-        .add_systems(Update, (one_time, update_mesh, handle_voxel_changes))
+        .add_systems(
+            Update,
+            (one_time, update_mesh, handle_voxel_changes, handle_queue),
+        )
         .run();
 }
 
@@ -50,6 +57,14 @@ pub struct VoxelData(VoxelChunk);
 
 #[derive(Resource)]
 pub struct VoxelPointerPosition(Option<Vec3>);
+
+#[derive(Resource)]
+pub struct ChunksToGenerateQueue(VecDeque<ChunksToGenerateQueueElement>);
+
+pub struct ChunksToGenerateQueueElement {
+    pub index: UVec3,
+    pub input_data: [bool; BUFFER_LEN],
+}
 
 #[derive(Component)]
 struct ChunkMesh {
@@ -82,25 +97,37 @@ fn setup(mut commands: Commands) {
 }
 
 fn one_time(mut commands: Commands, time: Res<Time>, maybe_data: Option<Res<VoxelData>>) {
-    if time.elapsed_secs() > 0.1 && maybe_data.is_none() {
+    if time.elapsed_secs() > 0.5 && maybe_data.is_none() {
         commands.insert_resource(VoxelData(VoxelChunk::full())) //Forced to delay creation by a delay because it doesn't work reliably otherwise
     }
 }
 
-fn handle_voxel_changes(
+fn handle_queue(
     mut commands: Commands,
-    maybe_voxels: Option<Res<VoxelData>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
+    mut queue: ResMut<ChunksToGenerateQueue>,
 ) {
-    let Some(voxels) = maybe_voxels else { return };
-    if !voxels.is_changed() {
+    let Some(element) = queue.0.pop_front() else {
         return;
-    }
-    let vec = convert_booleans_to_buffer(&voxels.0.raw().to_vec());
+    };
+    let vec = convert_booleans_to_buffer(&element.input_data.to_vec());
     let mut input_buffer = ShaderStorageBuffer::from(vec);
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let handle = buffers.add(input_buffer);
     commands.insert_resource(TerrainData(handle));
+}
+
+fn handle_voxel_changes(
+    maybe_voxels: Option<Res<VoxelData>>,
+    mut queue: ResMut<ChunksToGenerateQueue>,
+) {
+    let Some(voxels) = maybe_voxels else { return };
+    if voxels.is_changed() {
+        queue.0.push_back(ChunksToGenerateQueueElement {
+            index: UVec3::ZERO,
+            input_data: voxels.0.raw(),
+        });
+    }
 }
 
 fn update_mesh(

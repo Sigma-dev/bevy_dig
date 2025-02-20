@@ -3,11 +3,6 @@
 const CHUNK_WIDTH: u32 = 32;
 const MAX_VERTICES_PER_VOXEL: u32 = 12;
 const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
-/*
-fn is_voxel_full(pos: vec3<u32>) -> bool {
-    return input_data[pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH] == 1;
-}
-*/
 
 fn is_voxel_empty(pos: vec3<u32>) -> bool {
     if (pos.x <= 1 || pos.y <= 1 || pos.z <= 1) {
@@ -35,20 +30,6 @@ fn get_middle(a: vec3<u32>, b: vec3<u32>) -> vec3<f32> {
     );
 }
 
-fn flood_data_with(index: u32, a: vec4<f32>) {
-    for (var i: u32 = 0; i < MAX_VERTICES_PER_VOXEL; i ++) {
-        data[(index * MAX_VERTICES_PER_VOXEL) + i] = a;
-    }
-}
-
-fn flood_data_with_float(index: u32, a: f32) {
-    flood_data_with(index, vec4<f32>(a, a, a, a));
-}
-
-fn flood_data_with_float_and_marker(index: u32, marker: f32, a: f32) {
-    flood_data_with(index, vec4<f32>(marker, a, a, a));
-}
-
 fn corner_index_to_coordinates(index: vec3<u32>, corner_index: u32) -> vec3<u32> {
     const offset = array<vec3<u32>, 8>(
         vec3<u32>(0, 0, 0),
@@ -65,9 +46,6 @@ fn corner_index_to_coordinates(index: vec3<u32>, corner_index: u32) -> vec3<u32>
 
 @compute @workgroup_size(1)
 fn main(@builtin(global_invocation_id) index: vec3<u32>) {
-    /*if (index.x > CHUNK_WIDTH-1 || index.y > CHUNK_WIDTH-1 || index.z > CHUNK_WIDTH-1) {
-        return;
-    }*/
     let coordinates = array<vec3<u32>, 8>(
         index,
         index + vec3<u32>(1, 0, 0),
@@ -78,41 +56,26 @@ fn main(@builtin(global_invocation_id) index: vec3<u32>) {
         index + vec3<u32>(1, 1, 1),
         index + vec3<u32>(0, 1, 1),
     );
+    
     var corners = array<bool, 8>();
     for (var i: u32 = 0; i < 8; i++) {
        corners[i] = is_voxel_empty(coordinates[i]);
     }
 
     var cubeIndex: u32 = 0;
-    var amount: u32 = 0;
     for (var i: u32 = 0; i < 8; i++) {
         if (corners[i]) {
-            amount += 1u;
             cubeIndex = cubeIndex | (1u << i);
         }
     }
-    let edges = triTable[cubeIndex];
 
+    let edges = triTable[cubeIndex];
     for (var i: u32 = 0; i < 16 && edges[i] != -1; i += 3u) {
         for (var j: u32 = 0; j < 3; j++) {
-            if (i + j > 15) {
-                continue;
-            }
             let edge = edges[i + j];
-            if (edge == -1) {
-                continue;
-            }
             let cornersIndices = cornersIndexFromEdgeIndex[edge];
-            let cornerIndex = cornersIndices[0];
-            let cornerIndex2 = cornersIndices[1];
-            if (cornerIndex < 0 || cornerIndex > 7) {
-                continue;
-            }
-            if (cornerIndex2 < 0 || cornerIndex2 > 7) {
-                continue;
-            }
-            let p1 = corner_index_to_coordinates(index, cornerIndex);
-            let p2 = corner_index_to_coordinates(index, cornerIndex2);
+            let p1 = corner_index_to_coordinates(index,  cornersIndices[0]);
+            let p2 = corner_index_to_coordinates(index, cornersIndices[1]);
             let middle = get_middle(p1, p2);
             let coor = coordinates_to_index(index) * MAX_VERTICES_PER_VOXEL;
             data[coor + i + j] = vec4<f32>(middle.x, middle.y, middle.z, 0.0);

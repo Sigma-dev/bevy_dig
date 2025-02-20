@@ -1,10 +1,9 @@
-use std::{collections::BTreeMap, ops::Index};
-
 use bevy::{
     prelude::*,
     render::{
         extract_resource::*,
         gpu_readback::*,
+        mesh::Indices,
         render_asset::*,
         render_graph::*,
         render_resource::{binding_types::storage_buffer, *},
@@ -12,10 +11,10 @@ use bevy::{
         storage::*,
         *,
     },
-    utils::hashbrown::{HashMap, HashSet},
+    utils::hashbrown::HashMap,
 };
 
-use crate::{voxel::VoxelChunk, TerrainData, TerrainVertices};
+use crate::TerrainData;
 const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
 
 pub const CHUNK_WIDTH: usize = 32;
@@ -28,6 +27,7 @@ pub(crate) struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractResourcePlugin::<ReadbackBuffer>::default())
+            .add_event::<ChunkMeshGenerated>()
             .add_systems(Startup, setup)
             .add_systems(PostUpdate, update_resource);
     }
@@ -50,122 +50,102 @@ impl Plugin for GpuReadbackPlugin {
     }
 }
 
-#[derive(Component)]
-pub struct ReadBackMarker;
+#[derive(Event)]
+pub struct ChunkMeshGenerated {
+    pub index: UVec3,
+    pub mesh: Mesh,
+}
+
+impl ChunkMeshGenerated {
+    pub fn new(index: UVec3, mesh: Mesh) -> ChunkMeshGenerated {
+        ChunkMeshGenerated { index, mesh }
+    }
+}
 
 fn update_resource(
     terrain_data: Option<Res<TerrainData>>,
     mut commands: Commands,
     maybe_buffer: Option<ResMut<ReadbackBuffer>>,
-    maybe_first: Option<Res<FirstBuild>>,
-    maybe_trigger: Option<Res<BuildTerrain>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
 ) {
     commands.remove_resource::<BuildTerrain>();
     let Some(res) = terrain_data else {
         return;
     };
-    let is_changed = res.is_changed();
-    let data = res.0.clone();
 
-    if is_changed || maybe_first.is_some() {
+    if res.is_changed() {
         let Some(mut buffer) = maybe_buffer else {
             return;
         };
-        commands.remove_resource::<FirstBuild>();
-        println!("changed: {:?}", is_changed);
         commands.insert_resource::<BuildTerrain>(BuildTerrain);
-        buffer.input = data.clone();
+        buffer.input = res.0.clone();
         buffers.insert(&buffer.output, make_empty_triangles_buffer());
 
-        let id = commands
-            .spawn((Readback::buffer(buffer.output.clone()), ReadBackMarker))
+        commands
+            .spawn(Readback::buffer(buffer.output.clone()))
             .observe(
                 |trigger: Trigger<ReadbackComplete>,
-                 mut terrain_vertices: ResMut<TerrainVertices>,
-                 mut commanads: Commands| {
-                    let data: Vec<Vec4> = trigger.event().to_shader_type();
-                    let filtered: Vec<&Vec4> =
-                        data.iter().filter(|v| **v != Vec4::splat(0.)).collect();
+                 mut commanads: Commands,
+                 mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>| {
+                    let readback: Vec<Vec4> = trigger.event().to_shader_type();
+                    let filtered: Vec<Vec3> = readback
+                        .iter()
+                        .filter(|v| **v != Vec4::splat(0.))
+                        .map(|v4| v4.xyz())
+                        .collect();
                     let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
-
-                    let vertices: Vec<Vec3> = filtered.iter().map(|v4| v4.xyz()).collect();
-                    let uniques: Vec<Vec3> = unique.iter().map(|v4| v4.xyz()).collect();
-                    println!("Readback {:?}", vertices.len());
-                    if vertices.len() > 0 {
-                        *terrain_vertices = TerrainVertices(vertices, indices, uniques);
+                    println!("Readback {:?}", indices.len());
+                    if indices.len() > 0 {
+                        let mesh = create_terrain_mesh(&indices, &unique);
+                        chunk_mesh_w.send(ChunkMeshGenerated::new(UVec3::ZERO, mesh));
                         println!("despawn");
                         commanads.entity(trigger.entity()).despawn();
                     }
                 },
-            )
-            .id();
+            );
     }
 }
 
-/// Trait for tolerance-based equality comparison.
-trait ApproxEq {
+pub fn create_terrain_mesh(indices: &Vec<usize>, uniques: &Vec<Vec3>) -> Mesh {
+    let indices_u32: Vec<u32> = indices.iter().map(|i| *i as u32).collect();
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, uniques.clone())
+    .with_inserted_indices(Indices::U32(indices_u32))
+    .with_computed_normals()
+}
+
+trait SpatialHash {
+    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32);
     fn approx_eq(&self, other: &Self, epsilon: f32) -> bool;
 }
 
-/// Trait for spatial hashing.
-trait SpatialHash {
-    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32, i32);
-}
-
-impl ApproxEq for Vec4 {
-    /// Compare two `Vec4` values with a tolerance for floating-point inaccuracies.
-    fn approx_eq(&self, other: &Vec4, epsilon: f32) -> bool {
-        (self.x - other.x).abs() < epsilon
-            && (self.y - other.y).abs() < epsilon
-            && (self.z - other.z).abs() < epsilon
-            && (self.w - other.w).abs() < epsilon
-    }
-}
-
-impl SpatialHash for Vec4 {
-    /// Spatial hash function: rounds coordinates to a grid of size `epsilon`.
-    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32, i32) {
+impl SpatialHash for Vec3 {
+    fn spatial_hash(&self, epsilon: f32) -> (i32, i32, i32) {
         (
             (self.x / epsilon).round() as i32,
             (self.y / epsilon).round() as i32,
             (self.z / epsilon).round() as i32,
-            (self.w / epsilon).round() as i32,
         )
+    }
+    fn approx_eq(&self, other: &Vec3, epsilon: f32) -> bool {
+        (self.x - other.x).abs() < epsilon
+            && (self.y - other.y).abs() < epsilon
+            && (self.z - other.z).abs() < epsilon
     }
 }
 
-/* fn deduplicate_vertices(vec: &Vec<&Vec4>) -> (Vec<usize>, Vec<Vec4>) {
-    let mut unique_pos: Vec<Vec4> = Vec::new();
+fn deduplicate_vertices(vec: &Vec<Vec3>, epsilon: f32) -> (Vec<usize>, Vec<Vec3>) {
+    let mut unique_pos: Vec<Vec3> = Vec::new();
     let mut indices: Vec<usize> = Vec::new();
-
-    for pos in vec {
-        if let Some(index) = unique_pos.iter().position(|p| p == *pos) {
-            indices.push(index)
-        } else {
-            unique_pos.push(**pos);
-            indices.push(unique_pos.len() - 1);
-        }
-    }
-    /*
-    let test: Vec<Vec4> = indices.iter().map(|i| unique_floats[*i]).collect();
-
-    let test2: Vec<Vec4> = vec.iter().map(|v| **v).collect();
-    if (test2 == test) {
-        println!("yes !");
-    } */
-    return (indices, unique_pos);
-} */
-fn deduplicate_vertices(vec: &Vec<&Vec4>, epsilon: f32) -> (Vec<usize>, Vec<Vec4>) {
-    let mut unique_pos: Vec<Vec4> = Vec::new();
-    let mut indices: Vec<usize> = Vec::new();
-    let mut hash_map: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
+    let mut hash_map: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
 
     for pos in vec {
         let hash = pos.spatial_hash(epsilon);
         let mut found_index = None;
 
-        // Check only vertices in the same spatial hash bucket
         if let Some(bucket) = hash_map.get(&hash) {
             for &index in bucket {
                 if unique_pos[index].approx_eq(pos, epsilon) {
@@ -179,7 +159,7 @@ fn deduplicate_vertices(vec: &Vec<&Vec4>, epsilon: f32) -> (Vec<usize>, Vec<Vec4
             indices.push(index);
         } else {
             let new_index = unique_pos.len();
-            unique_pos.push(**pos);
+            unique_pos.push(*pos);
             indices.push(new_index);
             hash_map
                 .entry(hash)
@@ -213,21 +193,7 @@ pub fn make_sphere_buffer(radius_mult: f32) -> Vec<bool> {
     vec
 }
 
-pub fn make_full_buffer() -> Vec<bool> {
-    let mut vec = vec![false; BUFFER_LEN];
-    for (i, e) in vec.iter_mut().enumerate() {
-        if i < BUFFER_LEN {
-            *e = true;
-        }
-    }
-    vec
-}
-
 pub fn convert_booleans_to_buffer(booleans: &Vec<bool>) -> Vec<u32> {
-    booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
-}
-
-pub fn convert_booleans_arr_to_buffer(booleans: &[bool; BUFFER_LEN as usize]) -> Vec<u32> {
     booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
 }
 
@@ -235,7 +201,6 @@ pub fn convert_booleans_arr_to_buffer(booleans: &[bool; BUFFER_LEN as usize]) ->
 pub struct ReadbackBuffer {
     input: Handle<ShaderStorageBuffer>,
     output: Handle<ShaderStorageBuffer>,
-    ran_first: bool,
 }
 
 impl ReadbackBuffer {
@@ -243,11 +208,7 @@ impl ReadbackBuffer {
         input: Handle<ShaderStorageBuffer>,
         output: Handle<ShaderStorageBuffer>,
     ) -> ReadbackBuffer {
-        ReadbackBuffer {
-            input,
-            output,
-            ran_first: false,
-        }
+        ReadbackBuffer { input, output }
     }
 }
 
@@ -260,8 +221,6 @@ fn make_empty_triangles_buffer() -> ShaderStorageBuffer {
 fn setup(mut commands: Commands, mut buffers: ResMut<Assets<ShaderStorageBuffer>>) {
     let mut input_buffer =
         ShaderStorageBuffer::from(convert_booleans_to_buffer(&make_sphere_buffer(1.)));
-    /*  let mut input_buffer =
-    ShaderStorageBuffer::from(convert_booleans_to_buffer(&VoxelChunk::empty().raw())); */
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let output_buffer = make_empty_triangles_buffer();
     let input_handle = buffers.add(input_buffer);
@@ -366,7 +325,6 @@ impl render_graph::Node for ComputeNode {
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipeline = world.resource::<ComputePipeline>();
         let bind_group = world.resource::<GpuBufferBindGroup>();
-        let buffer = world.resource::<ReadbackBuffer>();
 
         if let Some(init_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline) {
             println!("Passed");

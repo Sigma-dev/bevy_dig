@@ -14,3 +14,18 @@ There must be no freezes while editing the terrain, and the game should be able 
 Performance tricks available:
 Splitting the terrain into smaller size
 Keep the mesh data on the GPU side and approximate collisions with the voxel data
+
+EndGame DataModel: 
+A ChunkedWorld struct is created given a certain UVec3 representing the number of chunks in each dimension
+The data is represented as a single large statically sized array.
+All spatial operations first directly gets an intermediate slice of the aabb of the operation. This AABB should be determined by directly slicing the array at the correct indices rather than a distance check.
+
+Approach A: One entity for all chunks
+Chunked world would live on an entity. There would be another component ModifiedChunks that tracks which chunks have been affected, since all operations on the ChunkedWorld return the affected chunks.
+A system would listen to ModifiedChunks changes,  ask ChunkedWorld for the data for each chunk and then add that data to a queue of chunks to be computed in a resource holding (ChunkIndex UVec3, ChunkData)[].
+In the render world, that queue is copied, and each frame, the first in the queue is processed. (This might need to be adjusted if multiple cannot be run at the same time, we would only run a new one if the readback object has destroyed itself).
+Then each readback would create the deduplicated mesh and send it as an event with (ChunkIndex UVec3,, ChunkMesh).
+Then a system reads these events and creates the meshes or updates them if they already exist
+
+
+Approach B: One entity per chunk

@@ -2,22 +2,21 @@ use bevy::{math::FloatPow, prelude::*};
 
 use crate::generation::{BUFFER_LEN, CHUNK_WIDTH};
 
-#[derive(Debug)]
+pub mod chunks_manager;
+
+#[derive(Component, Debug)]
 pub struct VoxelChunk {
+    pub index: UVec3,
     voxels: [bool; BUFFER_LEN as usize],
 }
 
 impl VoxelChunk {
-    pub fn new(voxels: [bool; BUFFER_LEN as usize]) -> VoxelChunk {
-        VoxelChunk { voxels }
+    pub fn new(index: UVec3, voxels: [bool; BUFFER_LEN as usize]) -> VoxelChunk {
+        VoxelChunk { index, voxels }
     }
 
-    pub fn empty() -> VoxelChunk {
-        VoxelChunk::new([false; BUFFER_LEN as usize])
-    }
-
-    pub fn full() -> VoxelChunk {
-        VoxelChunk::new([true; BUFFER_LEN as usize])
+    pub fn full(index: UVec3) -> VoxelChunk {
+        VoxelChunk::new(index, [true; BUFFER_LEN as usize])
     }
 
     pub fn raw(&self) -> [bool; BUFFER_LEN as usize] {
@@ -42,40 +41,17 @@ impl VoxelChunk {
         )
     }
 
-    pub fn get_voxel(&self, pos: UVec3) -> bool {
-        self.voxels[self.get_index(pos)]
-    }
-
     pub fn set_voxel(&mut self, pos: UVec3, value: bool) {
         self.voxels[self.get_index(pos)] = value;
     }
 
-    pub fn remove_voxel(&mut self, pos: UVec3) {
-        self.set_voxel(pos, false);
-    }
-
-    pub fn add_voxel(&mut self, pos: UVec3) {
-        self.set_voxel(pos, true);
-    }
-
-    pub fn dig_hole(&mut self, pos: Vec3, size: f32) {
+    pub fn set_sphere(&mut self, pos: Vec3, size: f32, state: bool) {
         let size_squared = size.squared();
         for i in 0..self.voxels.len() {
             let voxel_pos = self.get_pos(i);
 
             if voxel_pos.as_vec3().distance_squared(pos) < size_squared {
-                self.remove_voxel(voxel_pos);
-            }
-        }
-    }
-
-    pub fn build_sphere(&mut self, pos: Vec3, size: f32) {
-        let size_squared = size.squared();
-        for i in 0..self.voxels.len() {
-            let voxel_pos = self.get_pos(i);
-
-            if voxel_pos.as_vec3().distance_squared(pos) < size_squared {
-                self.add_voxel(voxel_pos);
+                self.set_voxel(voxel_pos, state);
             }
         }
     }

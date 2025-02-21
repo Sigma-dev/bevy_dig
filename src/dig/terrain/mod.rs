@@ -6,19 +6,18 @@ use bevy::{
     render::{render_resource::BufferUsages, storage::ShaderStorageBuffer},
     window::PrimaryWindow,
 };
-use interaction::{VoxelInteractionPlugin, VoxelPointerPosition};
+use interaction::{PointerPosition, VoxelInteractionPlugin};
 
 use crate::{
-    generation::{ChunkMeshGenerated, GpuReadbackPlugin, TerrainData, BUFFER_LEN},
-    voxel::VoxelChunk,
+    generation::{
+        ChunkMeshGenerated, GpuReadbackPlugin, ReadBackIndex, TerrainData, BUFFER_LEN, CHUNK_WIDTH,
+    },
+    voxel::{chunks_manager::ChunksManager, VoxelChunk},
 };
 
 mod interaction;
 
 pub const VOXEL_SCALE: f32 = 0.25;
-
-#[derive(Resource, Debug)]
-pub struct VoxelData(VoxelChunk);
 
 #[derive(Component)]
 struct ChunkMesh {
@@ -43,15 +42,19 @@ impl Plugin for DigTerrainPlugin {
     }
 }
 
-pub fn spawn_terrain(commands: &mut Commands) {
-    commands.insert_resource(VoxelData(VoxelChunk::full()))
+pub fn spawn_terrain(mut chunks_manager: ChunksManager) {
+    chunks_manager.create_chunks(UVec3::new(3, 1, 3), VOXEL_SCALE);
 }
 
 fn handle_queue(
     mut commands: Commands,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut queue: ResMut<ChunksToGenerateQueue>,
+    readback_q: Query<&ReadBackIndex>,
 ) {
+    if readback_q.iter().len() > 0 {
+        return;
+    }
     let Some(element) = queue.0.pop_front() else {
         return;
     };
@@ -63,18 +66,17 @@ fn handle_queue(
     let mut input_buffer = ShaderStorageBuffer::from(vec);
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let handle = buffers.add(input_buffer);
-    commands.insert_resource(TerrainData(handle));
+    commands.insert_resource(TerrainData(handle, element.index));
 }
 
 fn handle_voxel_changes(
-    maybe_voxels: Option<Res<VoxelData>>,
+    mut chunks_q: Query<&mut VoxelChunk, Changed<VoxelChunk>>,
     mut queue: ResMut<ChunksToGenerateQueue>,
 ) {
-    let Some(voxels) = maybe_voxels else { return };
-    if voxels.is_changed() {
+    for chunk in chunks_q.iter_mut() {
         queue.0.push_back(ChunksToGenerateQueueElement {
-            index: UVec3::ZERO,
-            input_data: voxels.0.raw(),
+            index: chunk.index,
+            input_data: chunk.raw(),
         });
     }
 }
@@ -100,6 +102,9 @@ fn update_mesh(
         } else {
             commands
                 .spawn((
+                    Transform::from_translation(
+                        (ev.index * CHUNK_WIDTH as u32).as_vec3() * VOXEL_SCALE,
+                    ),
                     Mesh3d(meshes.add(mesh)),
                     MeshMaterial3d(materials.add(StandardMaterial {
                         base_color: Color::srgb(0.34, 0.2, 0.2),
@@ -115,17 +120,17 @@ fn update_mesh(
                      q_windows: Query<&Window, With<PrimaryWindow>>,
                      mut commands: Commands| {
                         if !q_windows.single().cursor_options.visible {
-                            commands.remove_resource::<VoxelPointerPosition>();
+                            commands.remove_resource::<PointerPosition>();
                             return;
                         }
                         let Some(pos) = trigger.hit.position else {
                             return;
                         };
-                        commands.insert_resource(VoxelPointerPosition::from_world_pos(pos))
+                        commands.insert_resource(PointerPosition(pos))
                     },
                 )
                 .observe(|_: Trigger<Pointer<Out>>, mut commands: Commands| {
-                    commands.remove_resource::<VoxelPointerPosition>();
+                    commands.remove_resource::<PointerPosition>();
                 });
         }
     }

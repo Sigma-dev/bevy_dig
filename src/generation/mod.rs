@@ -61,8 +61,11 @@ impl ChunkMeshGenerated {
     }
 }
 
+#[derive(Component)]
+pub struct ReadBackIndex(UVec3);
+
 #[derive(Resource, Debug)]
-pub struct TerrainData(pub Handle<ShaderStorageBuffer>);
+pub struct TerrainData(pub Handle<ShaderStorageBuffer>, pub UVec3);
 
 fn update_resource(
     terrain_data: Option<Res<TerrainData>>,
@@ -84,11 +87,16 @@ fn update_resource(
         buffers.insert(&buffer.output, make_empty_triangles_buffer());
 
         commands
-            .spawn(Readback::buffer(buffer.output.clone()))
+            .spawn((
+                Readback::buffer(buffer.output.clone()),
+                ReadBackIndex(res.1),
+            ))
             .observe(
                 |trigger: Trigger<ReadbackComplete>,
                  mut commanads: Commands,
-                 mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>| {
+                 mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>,
+                 index_q: Query<&ReadBackIndex>| {
+                    let index = index_q.get(trigger.entity()).unwrap().0;
                     let readback: Vec<Vec4> = trigger.event().to_shader_type();
                     let filtered: Vec<Vec3> = readback
                         .iter()
@@ -99,7 +107,7 @@ fn update_resource(
                     println!("Readback {:?}", indices.len());
                     if indices.len() > 0 {
                         let mesh = create_terrain_mesh(&indices, &unique);
-                        chunk_mesh_w.send(ChunkMeshGenerated::new(UVec3::ZERO, mesh));
+                        chunk_mesh_w.send(ChunkMeshGenerated::new(index, mesh));
                         commanads.entity(trigger.entity()).despawn();
                     }
                 },

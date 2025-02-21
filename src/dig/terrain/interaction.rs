@@ -1,27 +1,13 @@
 use avian3d::prelude::{Collider, Mass, RayCaster, RayHits, RigidBody};
 use bevy::prelude::*;
 
-use crate::dig::player::camera::FpsCamera;
-
-use super::{VoxelData, VOXEL_SCALE};
+use crate::{dig::player::camera::FpsCamera, voxel::chunks_manager::ChunksManager};
 
 #[derive(Resource)]
 pub struct VoxelPointerSize(f32);
 
 #[derive(Resource)]
-pub struct VoxelPointerPosition {
-    world_pos: Vec3,
-    voxel_pos: Vec3,
-}
-
-impl VoxelPointerPosition {
-    pub fn from_world_pos(world_pos: Vec3) -> VoxelPointerPosition {
-        VoxelPointerPosition {
-            world_pos,
-            voxel_pos: (world_pos) * (1. / VOXEL_SCALE) + Vec3::splat(-2.),
-        }
-    }
-}
+pub struct PointerPosition(pub Vec3);
 
 pub struct VoxelInteractionPlugin;
 impl Plugin for VoxelInteractionPlugin {
@@ -41,27 +27,24 @@ impl Plugin for VoxelInteractionPlugin {
 fn modify_voxels(
     keys: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    maybe_voxel_data: Option<ResMut<VoxelData>>,
-    voxel_pos: Option<Res<VoxelPointerPosition>>,
+    mut chunks_manager: ChunksManager,
+    pointer_pos: Option<Res<PointerPosition>>,
     voxel_size: Res<VoxelPointerSize>,
     mut gizmos: Gizmos,
 ) {
-    let Some(mut voxel_data) = maybe_voxel_data else {
-        return;
-    };
-    let Some(pos) = voxel_pos else {
+    let Some(pos) = pointer_pos else {
         return;
     };
     gizmos.sphere(
-        Isometry3d::from_translation(pos.world_pos),
-        voxel_size.0 * VOXEL_SCALE,
+        Isometry3d::from_translation(pos.0),
+        voxel_size.0,
         Color::WHITE,
     );
     if mouse_buttons.just_pressed(MouseButton::Left) {
-        voxel_data.0.dig_hole(pos.voxel_pos, voxel_size.0);
+        chunks_manager.dig_sphere(pos.0, voxel_size.0);
     }
     if keys.just_pressed(KeyCode::KeyB) {
-        voxel_data.0.build_sphere(pos.voxel_pos, voxel_size.0);
+        chunks_manager.build_sphere(pos.0, voxel_size.0);
     }
 }
 
@@ -70,9 +53,9 @@ fn spawn_sphere(
     keys: Res<ButtonInput<KeyCode>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    voxel_pos: Option<Res<VoxelPointerPosition>>,
+    pointer_pos: Option<Res<PointerPosition>>,
 ) {
-    let Some(pos) = voxel_pos else {
+    let Some(pos) = pointer_pos else {
         return;
     };
     if keys.just_pressed(KeyCode::KeyR) {
@@ -82,7 +65,7 @@ fn spawn_sphere(
             Collider::sphere(1.),
             Mass(1.),
             RigidBody::Dynamic,
-            Transform::from_translation(pos.world_pos + Vec3::Y * 10.),
+            Transform::from_translation(pos.0 + Vec3::Y * 10.),
         ));
     }
 }
@@ -93,10 +76,11 @@ fn handle_fps_pointer(
 ) {
     for (gt, raycast, hits) in raycast_q.iter() {
         let Some(hit) = hits.iter().next() else {
+            commands.remove_resource::<PointerPosition>();
             continue;
         };
         let pos: Vec3 = gt.translation() + raycast.origin + gt.forward() * hit.distance;
-        commands.insert_resource::<VoxelPointerPosition>(VoxelPointerPosition::from_world_pos(pos));
+        commands.insert_resource::<PointerPosition>(PointerPosition(pos));
     }
 }
 

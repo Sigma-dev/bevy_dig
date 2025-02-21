@@ -27,5 +27,51 @@ In the render world, that queue is copied, and each frame, the first in the queu
 Then each readback would create the deduplicated mesh and send it as an event with (ChunkIndex UVec3,, ChunkMesh).
 Then a system reads these events and creates the meshes or updates them if they already exist
 
+Pros:
+- Easy to stitch chunks together
 
-Approach B: One entity per chunk
+Cons:
+- Complicates the code
+- Performance concerns
+- Less flexible for other applications
+
+
+Approach B: One entity per chunk with one overseer
+
+Overseer:
+Only holds the entity ids of the chunks with their index somehow and the list of commands set this frame.
+It is the point of entry for all the commands (dig, build).
+At the end of every frame (PostUpdate), it processes each command, finding which chunks would be affected, and sending the command as a local space command for the chunks.
+
+Chunks:
+Just holds the data and a mesh handle, needs to be positionned correctly
+A system listens to it's changes and creates the mesh and sends a ChunkMesh with the index, then the chunk gets the mesh and adds it to it's handle.
+
+Pros:
+- Simple
+- Flexible (could apply more easily to other projects or larger changes)
+
+Cons:
+- Harder to stitch chunks together (OnChange, would need to query the overseer for it's neighbors, then access their data and put all of that in the buffer)
+
+Approach C (CURRENT CHOICE): One entity per chunk with a system param
+
+ChunksManager:
+Handles the creation and modification of the voxel world.
+Methods:
+- create_chunks(amount: UVec3, scale: f32), that wipes existing chunks and creates the required chunks
+- set_sphere(world_pos_center: Vec3, size: f32, state: boolean) -> converts the query in global voxel coordinates, then gets all the affected chunks, transforms the query in local voxel coordinates and affects them.
+- dig -> set_sphere_false()
+- build -> set_sphere_true()
+
+Chunks:
+Holds a chunk index (UVec3) the data and a mesh handle, needs to be positionned correctly.
+A system listens to it's changes and creates the mesh and sends a ChunkMesh with the index, then the chunk gets the mesh and adds it to it's handle.
+
+Pros:
+- Very Simple
+- Flexible (could apply more easily to other projects or larger changes)
+
+Cons:
+- Harder to stitch chunks together (OnChange, would need to query the overseer for it's neighbors, then access their data and put all of that in the buffer)
+- Would probably be hard to have multiple chunk systems at the same time (not a problem in this and 90% of projects)

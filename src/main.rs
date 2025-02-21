@@ -8,6 +8,7 @@ use bevy::{
 use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
 use dig::{player::spawn_player, terrain::spawn_terrain, DigPlugin};
 use indexed_camera::{IndexedCamera, IndexedCameraPlugin};
+use voxel::chunks_manager::ChunksManager;
 
 mod dig;
 mod generation;
@@ -74,9 +75,9 @@ fn setup(mut commands: Commands) {
     spawn_player(&mut commands)
 }
 
-fn delayed_setup(mut commands: Commands, frame_count: Res<FrameCount>) {
+fn delayed_setup(chunks_manager: ChunksManager, frame_count: Res<FrameCount>) {
     if frame_count.0 == 20 {
         //Forced to delay creation by a delay because it doesn't work reliably otherwise
-        spawn_terrain(&mut commands);
+        spawn_terrain(chunks_manager);
     }
 }

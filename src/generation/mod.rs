@@ -14,8 +14,7 @@ use bevy::{
     utils::hashbrown::HashMap,
 };
 
-use crate::TerrainData;
-const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
+const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
 pub const CHUNK_WIDTH: usize = 32;
 pub const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
@@ -26,7 +25,7 @@ const TRI_BUFFER_LEN: usize =
 pub(crate) struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractResourcePlugin::<ReadbackBuffer>::default())
+        app.add_plugins((ExtractResourcePlugin::<ReadbackBuffer>::default(),))
             .add_event::<ChunkMeshGenerated>()
             .add_systems(Startup, setup)
             .add_systems(PostUpdate, update_resource);
@@ -61,6 +60,9 @@ impl ChunkMeshGenerated {
         ChunkMeshGenerated { index, mesh }
     }
 }
+
+#[derive(Resource, Debug)]
+pub struct TerrainData(pub Handle<ShaderStorageBuffer>);
 
 fn update_resource(
     terrain_data: Option<Res<TerrainData>>,
@@ -170,10 +172,6 @@ fn deduplicate_vertices(vec: &Vec<Vec3>, epsilon: f32) -> (Vec<usize>, Vec<Vec3>
     (indices, unique_pos)
 }
 
-pub fn convert_booleans_to_buffer(booleans: &Vec<bool>) -> Vec<u32> {
-    booleans.iter().map(|a| if *a { 1 } else { 0 }).collect()
-}
-
 #[derive(Resource, ExtractResource, Clone, Debug)]
 pub struct ReadbackBuffer {
     input: Handle<ShaderStorageBuffer>,
@@ -232,7 +230,6 @@ fn prepare_bind_group(
 ) {
     let input_buffer: &GpuShaderStorageBuffer = buffers.get(&buffer.input).unwrap();
     let output_buffer: &GpuShaderStorageBuffer = buffers.get(&buffer.output).unwrap();
-    println!("{:?}", output_buffer.buffer);
     let bind_group = render_device.create_bind_group(
         None,
         &pipeline.layout,

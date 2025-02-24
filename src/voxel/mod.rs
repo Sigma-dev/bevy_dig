@@ -1,25 +1,25 @@
 use bevy::{math::FloatPow, prelude::*};
 
-use crate::generation::{BUFFER_LEN, CHUNK_WIDTH};
+use crate::generation::{CHUNK_DATA, CHUNK_WIDTH};
 
 pub mod chunks_manager;
 
 #[derive(Component, Debug)]
 pub struct VoxelChunk {
     pub index: UVec3,
-    voxels: [bool; BUFFER_LEN as usize],
+    voxels: [bool; CHUNK_DATA as usize],
 }
 
 impl VoxelChunk {
-    pub fn new(index: UVec3, voxels: [bool; BUFFER_LEN as usize]) -> VoxelChunk {
+    pub fn new(index: UVec3, voxels: [bool; CHUNK_DATA as usize]) -> VoxelChunk {
         VoxelChunk { index, voxels }
     }
 
     pub fn full(index: UVec3) -> VoxelChunk {
-        VoxelChunk::new(index, [true; BUFFER_LEN as usize])
+        VoxelChunk::new(index, [true; CHUNK_DATA as usize])
     }
 
-    pub fn raw(&self) -> [bool; BUFFER_LEN as usize] {
+    pub fn raw(&self) -> [bool; CHUNK_DATA as usize] {
         self.voxels
     }
 

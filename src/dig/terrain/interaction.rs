@@ -3,6 +3,8 @@ use bevy::prelude::*;
 
 use crate::{dig::player::camera::FpsCamera, voxel::chunks_manager::ChunksManager};
 
+use super::VOXEL_SCALE;
+
 #[derive(Resource)]
 pub struct VoxelPointerSize(f32);
 
@@ -86,7 +88,7 @@ fn handle_fps_pointer(
 
 fn modify_pointer_size(keys: Res<ButtonInput<KeyCode>>, mut voxel_size: ResMut<VoxelPointerSize>) {
     if keys.pressed(KeyCode::KeyQ) {
-        voxel_size.0 = (voxel_size.0 - 0.2).max(1.);
+        voxel_size.0 = (voxel_size.0 - 0.2).max(2. * VOXEL_SCALE);
     }
     if keys.pressed(KeyCode::KeyE) {
         voxel_size.0 += 0.2;

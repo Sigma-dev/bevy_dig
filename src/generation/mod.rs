@@ -17,7 +17,9 @@ use bevy::{
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
 pub const CHUNK_WIDTH: usize = 32;
-pub const BUFFER_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+pub const CHUNK_DATA: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+pub const INPUT_CHUNK_WIDTH: usize = CHUNK_WIDTH + 2;
+pub const BUFFER_LEN: usize = INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;
 const MAX_VERTICES_PER_CUBE: usize = 12;
 const TRI_BUFFER_LEN: usize =
     (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_CUBE;
@@ -264,8 +266,8 @@ impl FromWorld for ComputePipeline {
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::COMPUTE,
                 (
-                    storage_buffer::<Vec<u32>>(false),
-                    storage_buffer::<Vec<Vec4>>(false),
+                    storage_buffer::<[u32; BUFFER_LEN]>(false),
+                    storage_buffer::<[Vec4; TRI_BUFFER_LEN]>(false),
                 ),
             ),
         );
@@ -317,9 +319,9 @@ impl render_graph::Node for ComputeNode {
             pass.set_bind_group(0, &bind_group.0, &[]);
             pass.set_pipeline(init_pipeline);
             pass.dispatch_workgroups(
-                CHUNK_WIDTH as u32 + 2,
-                CHUNK_WIDTH as u32 + 2,
-                CHUNK_WIDTH as u32 + 2,
+                (CHUNK_WIDTH + 1) as u32,
+                (CHUNK_WIDTH + 1) as u32,
+                (CHUNK_WIDTH + 1) as u32,
             );
         }
         Ok(())

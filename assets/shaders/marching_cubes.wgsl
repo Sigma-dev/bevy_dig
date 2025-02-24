@@ -1,22 +1,18 @@
-@group(0) @binding(0) var<storage, read_write> input_data: array<u32>;
-@group(0) @binding(1) var<storage, read_write> data: array<vec4<f32>>;
-const CHUNK_WIDTH: u32 = 32;
-const MAX_VERTICES_PER_VOXEL: u32 = 12;
+const INTERNAL_CHUNK_WIDTH: u32 = 32;
+const CHUNK_WIDTH: u32 = INTERNAL_CHUNK_WIDTH + 2u;
 const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+const OUTPUT_LENGTH = INPUT_LENGTH * 12;
+const MAX_VERTICES_PER_VOXEL: u32 = 12;
+@group(0) @binding(0) var<storage, read_write> input_data: array<u32, INPUT_LENGTH>;
+@group(0) @binding(1) var<storage, read_write> data: array<vec4<f32>, OUTPUT_LENGTH>;
+
 
 fn is_voxel_empty(pos: vec3<u32>) -> bool {
-    if (pos.x <= 1 || pos.y <= 1 || pos.z <= 1) {
-        return true;
-    }
-    let copy = vec3<u32>(pos.x - 2, pos.y - 2, pos.z - 2);
-    if (copy.x >= CHUNK_WIDTH) { return true; }
-    if (copy.y >= CHUNK_WIDTH) { return true; }
-    if (copy.z >= CHUNK_WIDTH) { return true; }
-    return input_data[copy.x + copy.y * CHUNK_WIDTH + copy.z * CHUNK_WIDTH * CHUNK_WIDTH] != 1;
+    return input_data[pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH] != 1;
 }
 
-fn coordinates_to_index(coords: vec3<u32>) -> u32 {
-    return coords.x + coords.y * (CHUNK_WIDTH + 2) + coords.z * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2);
+fn index_to_output_index(coords: vec3<u32>) -> u32 {
+    return (coords.x + coords.y * CHUNK_WIDTH + coords.z * CHUNK_WIDTH * CHUNK_WIDTH) * MAX_VERTICES_PER_VOXEL;
 }
 
 fn get_middle(a: vec3<u32>, b: vec3<u32>) -> vec3<f32> {
@@ -62,28 +58,28 @@ fn main(@builtin(global_invocation_id) index: vec3<u32>) {
        corners[i] = is_voxel_empty(coordinates[i]);
     }
 
-    var cubeIndex: u32 = 0;
+    var cube_index: u32 = 0;
     for (var i: u32 = 0; i < 8; i++) {
         if (corners[i]) {
-            cubeIndex = cubeIndex | (1u << i);
+            cube_index = cube_index | (1u << i);
         }
     }
 
-    let edges = triTable[cubeIndex];
+    let edges = triangles_table[cube_index];
     for (var i: u32 = 0; i < 16 && edges[i] != -1; i += 3u) {
         for (var j: u32 = 0; j < 3; j++) {
             let edge = edges[i + j];
-            let cornersIndices = cornersIndexFromEdgeIndex[edge];
-            let p1 = corner_index_to_coordinates(index,  cornersIndices[0]);
-            let p2 = corner_index_to_coordinates(index, cornersIndices[1]);
+            let corners = edge_index_to_conter_index[edge];
+            let p1 = corner_index_to_coordinates(index,  corners[0]);
+            let p2 = corner_index_to_coordinates(index, corners[1]);
             let middle = get_middle(p1, p2);
-            let coor = coordinates_to_index(index) * MAX_VERTICES_PER_VOXEL;
+            let coor = index_to_output_index(index);
             data[coor + i + j] = vec4<f32>(middle.x, middle.y, middle.z, 0.0);
         }
     }
 }
 
-const cornersIndexFromEdgeIndex = array<array<u32, 2>, 12>(
+const edge_index_to_conter_index = array<array<u32, 2>, 12>(
     array<u32, 2>(0, 1),
     array<u32, 2>(1, 2),
     array<u32, 2>(2, 3),
@@ -98,7 +94,7 @@ const cornersIndexFromEdgeIndex = array<array<u32, 2>, 12>(
     array<u32, 2>(3, 7)
 );
 
-const triTable = array<array<i32, 16>, 256>(
+const triangles_table = array<array<i32, 16>, 256>(
     array<i32, 16>(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
     array<i32, 16>(0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
     array<i32, 16>(0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),

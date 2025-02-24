@@ -1,35 +1,37 @@
 use bevy::{math::VectorSpace, prelude::*, text::cosmic_text::ttf_parser::kern};
 
-const CHUNK_WIDTH: u32 = 8;
+const CHUNK_WIDTH: u32 = 32;
+const INPUT_CHUNK_WIDTH: u32 = CHUNK_WIDTH + 2;
 const MAX_VERTICES_PER_VOXEL: u32 = 12;
-const INPUT_LENGTH: u32 = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+const INPUT_LENGTH: u32 = INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;
 const OUTPUT_LENGTH: u32 =
     (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_VOXEL;
-/*
-fn is_voxel_full(pos: UVec3) -> bool {
-    return input_data[pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH] == 1;
+
+fn make_input() -> [u32; INPUT_LENGTH as usize] {
+    let mut start = [1; INPUT_LENGTH as usize];
+    for x in 0..INPUT_CHUNK_WIDTH {
+        for y in 0..INPUT_CHUNK_WIDTH {
+            for z in 0..INPUT_CHUNK_WIDTH {
+                if x == 0
+                    || y == 0
+                    || y == INPUT_CHUNK_WIDTH - 1
+                    || z == 0
+                    || z == INPUT_CHUNK_WIDTH - 1
+                {
+                    start[x as usize
+                        + y as usize * INPUT_CHUNK_WIDTH as usize
+                        + z as usize * INPUT_CHUNK_WIDTH as usize * INPUT_CHUNK_WIDTH as usize] = 0;
+                }
+            }
+        }
+    }
+    start
 }
-*/
 
-const input_data: [u32; INPUT_LENGTH as usize] = [1; INPUT_LENGTH as usize];
-
-fn is_voxel_empty(pos: UVec3) -> bool {
-    println!("pos: {:?}", pos);
-    if (pos.x <= 1 || pos.y <= 1 || pos.z <= 1) {
-        return true;
-    }
-    let copy = UVec3::new(pos.x - 2, pos.y - 2, pos.z - 2);
-    if (copy.x >= CHUNK_WIDTH) {
-        return true;
-    }
-    if (copy.y >= CHUNK_WIDTH) {
-        return true;
-    }
-    if (copy.z >= CHUNK_WIDTH) {
-        return true;
-    }
+fn is_voxel_empty(pos: UVec3, input_data: &[u32; INPUT_LENGTH as usize]) -> bool {
+    let copy = UVec3::new(pos.x - 0, pos.y - 0, pos.z - 0);
     let index = (copy.x + copy.y * CHUNK_WIDTH + copy.z * CHUNK_WIDTH * CHUNK_WIDTH);
-    println!("read: {:?} {}", copy, index);
+    //println!("{} {}", index, input_data[index as usize]);
     return input_data[index as usize] != 1;
 }
 
@@ -59,18 +61,53 @@ fn corner_index_to_coordinates(index: UVec3, corner_index: u32) -> UVec3 {
 }
 
 pub fn run_simulation() -> [Vec4; OUTPUT_LENGTH as usize] {
+    let input_data: [u32; INPUT_LENGTH as usize] = make_input();
     let mut data: [Vec4; OUTPUT_LENGTH as usize] = [Vec4::ZERO; OUTPUT_LENGTH as usize];
+    // println!("da");
+    print_slices_3d_u32(&input_data.to_vec(), INPUT_CHUNK_WIDTH as usize);
     for i in 0..CHUNK_WIDTH + 2 {
         for j in 0..CHUNK_WIDTH + 2 {
             for k in 0..CHUNK_WIDTH + 2 {
-                man(UVec3::new(i, j, k), data);
+                man(&input_data, UVec3::new(i, j, k), &mut data);
             }
         }
     }
+    //println!("{:?}", data);
+    print_slices_3d(&data.to_vec(), INPUT_CHUNK_WIDTH as usize);
     return data;
 }
 
-fn man(index: UVec3, mut data: [Vec4; OUTPUT_LENGTH as usize]) {
+fn print_slices_3d(vec: &Vec<Vec4>, size: usize) {
+    for z in 0..size {
+        let mut str = String::new();
+        for y in 0..size {
+            for x in 0..size {
+                str.push_str(format!("{},", vec[(x + y * size + z * size * size) * 12]).as_str());
+            }
+            str.push('\n');
+        }
+        println!("Slice {}:\n{}", z, str);
+    }
+}
+
+fn print_slices_3d_u32(vec: &Vec<u32>, size: usize) {
+    for z in 0..size {
+        let mut str = String::new();
+        for y in 0..size {
+            for x in 0..size {
+                str.push_str(format!("{},", vec[x + y * size + z * size * size]).as_str());
+            }
+            str.push('\n');
+        }
+        println!("Slice {}:\n{}", z, str);
+    }
+}
+
+fn man(
+    input_data: &[u32; INPUT_LENGTH as usize],
+    index: UVec3,
+    data: &mut [Vec4; OUTPUT_LENGTH as usize],
+) {
     /*if (index.x > CHUNK_WIDTH-1 || index.y > CHUNK_WIDTH-1 || index.z > CHUNK_WIDTH-1) {
         return;
     }*/
@@ -86,9 +123,9 @@ fn man(index: UVec3, mut data: [Vec4; OUTPUT_LENGTH as usize]) {
     ];
     let mut corners: [bool; 8] = [false; 8];
     for i in 0..8 {
-        corners[i] = is_voxel_empty(coordinates[i]);
+        corners[i] = is_voxel_empty(coordinates[i], input_data);
     }
-    println!("{:?}", corners);
+    //println!("{:?}", corners);
 
     let mut cubeIndex: u32 = 0;
     for i in 0..8 {
@@ -96,34 +133,27 @@ fn man(index: UVec3, mut data: [Vec4; OUTPUT_LENGTH as usize]) {
             cubeIndex = cubeIndex | (1 << i);
         }
     }
-    println!("{:?}", cubeIndex);
+    //  println!("{:?}", cubeIndex);
     let edges = triTable[cubeIndex as usize];
+    //println!("da");
 
     let mut i = 0;
     while (i < 16 && edges[i] != -1) {
         for j in 0..3 {
-            if (i + j > 15) {
-                continue;
-            }
             let edge = edges[i + j];
             if (edge == -1) {
                 continue;
             }
             let cornersIndices = cornersIndexFromEdgeIndex[edge as usize];
-            let cornerIndex = cornersIndices.0;
-            let cornerIndex2 = cornersIndices.1;
-            if (cornerIndex < 0 || cornerIndex > 7) {
-                continue;
-            }
-            if (cornerIndex2 < 0 || cornerIndex2 > 7) {
-                continue;
-            }
-            let p1 = corner_index_to_coordinates(index, cornerIndex);
-            let p2 = corner_index_to_coordinates(index, cornerIndex2);
+            let p1 = corner_index_to_coordinates(index, cornersIndices.0);
+            let p2 = corner_index_to_coordinates(index, cornersIndices.1);
             let middle = get_middle(p1, p2);
             let coor = coordinates_to_index(index) * 12;
+            /*   println!("DI");
             data[coor as usize + i as usize + j as usize] =
-                Vec4::new(middle.x, middle.y, middle.z, 0.0);
+                Vec4::new(middle.x, middle.y, middle.z, 0.0); */
+            data[coor as usize + i as usize + j as usize] = Vec4::splat(cubeIndex as f32);
+            // println!("{:?}", data);
         }
         i += 3;
     }

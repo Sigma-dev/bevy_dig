@@ -24,6 +24,9 @@ struct ChunkMesh {
     index: UVec3,
 }
 
+#[derive(Event)]
+pub struct FinishedGenerating;
+
 #[derive(Resource)]
 pub struct ChunksToGenerateQueue(VecDeque<ChunksToGenerateQueueElement>);
 
@@ -37,6 +40,7 @@ impl Plugin for DigTerrainPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(VoxelInteractionPlugin)
             .add_plugins(GpuReadbackPlugin)
+            .add_event::<FinishedGenerating>()
             .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
             .add_systems(Update, (handle_queue, handle_voxel_changes, update_mesh));
     }
@@ -51,6 +55,7 @@ fn handle_queue(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut queue: ResMut<ChunksToGenerateQueue>,
     readback_q: Query<&ReadBackIndex>,
+    mut finished_w: EventWriter<FinishedGenerating>,
 ) {
     if readback_q.iter().len() > 0 {
         return;
@@ -58,6 +63,9 @@ fn handle_queue(
     let Some(element) = queue.0.pop_front() else {
         return;
     };
+    if queue.0.is_empty() {
+        finished_w.send(FinishedGenerating);
+    }
     let vec: Vec<u32> = element
         .input_data
         .iter()
@@ -70,13 +78,17 @@ fn handle_queue(
 }
 
 fn handle_voxel_changes(
-    mut chunks_q: Query<&mut VoxelChunk, Changed<VoxelChunk>>,
+    mut set: ParamSet<(Query<Entity, Changed<VoxelChunk>>, ChunksManager)>,
     mut queue: ResMut<ChunksToGenerateQueue>,
 ) {
-    for chunk in chunks_q.iter_mut() {
+    let changed: Vec<Entity> = set.p0().iter().collect();
+    for chunk_entity in changed.iter() {
+        let manager = set.p1();
+        let chunk = manager.get_chunk(*chunk_entity);
+        let data = manager.get_chunk_surrounded(chunk.index);
         queue.0.push_back(ChunksToGenerateQueueElement {
             index: chunk.index,
-            input_data: chunk.raw(),
+            input_data: data,
         });
     }
 }
@@ -86,6 +98,7 @@ fn update_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mesh_chunk_r: EventReader<ChunkMeshGenerated>,
+    chunks_manager: ChunksManager,
     terrain_q: Query<(Entity, &Mesh3d, &ChunkMesh)>,
 ) {
     for ev in mesh_chunk_r.read() {
@@ -100,10 +113,13 @@ fn update_mesh(
             meshes.insert(mesh_handle, mesh);
             commands.entity(entity).insert(collider);
         } else {
+            let size = chunks_manager.get_amount();
+            let mut offset = (size.as_vec3() * CHUNK_WIDTH as f32 * VOXEL_SCALE) / 2.;
+            offset.y *= 2.;
             commands
                 .spawn((
                     Transform::from_translation(
-                        (ev.index * CHUNK_WIDTH as u32).as_vec3() * VOXEL_SCALE,
+                        (ev.index * CHUNK_WIDTH as u32).as_vec3() * VOXEL_SCALE - offset,
                     ),
                     Mesh3d(meshes.add(mesh)),
                     MeshMaterial3d(materials.add(StandardMaterial {

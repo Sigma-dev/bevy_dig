@@ -1,0 +1,10 @@
+
+
+
+
+BUG FIXES:
+- Sometimes the mesh has missing triangles
+- Sometimes the player falls through the mesh(probably the bad kinematic collision and the slim collider)
+
+
+IMPROVEMENTS:

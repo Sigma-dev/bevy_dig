@@ -28,15 +28,15 @@ pub struct GroundFriction(pub f32);
 #[derive(Component)]
 pub struct HoverSpring {
     target_height: f32,
-    dampening_factor: f32,
+    _dampening_factor: f32,
     strength_factor: f32,
 }
 
 impl HoverSpring {
-    pub fn new(target_height: f32, dampening_factor: f32, strength_factor: f32) -> HoverSpring {
+    pub fn new(target_height: f32, _dampening_factor: f32, strength_factor: f32) -> HoverSpring {
         HoverSpring {
             target_height,
-            dampening_factor,
+            _dampening_factor,
             strength_factor,
         }
     }

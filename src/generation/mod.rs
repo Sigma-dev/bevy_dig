@@ -335,11 +335,6 @@ impl render_graph::Node for ComputeNode {
 
             pass.set_bind_group(0, &bind_group.0, &[]);
             pass.set_pipeline(init_pipeline);
-            /*  pass.dispatch_workgroups(
-                (CHUNK_WIDTH + 1) as u32,
-                (CHUNK_WIDTH + 1) as u32,
-                (CHUNK_WIDTH + 1) as u32,
-            ); */
             pass.dispatch_workgroups(8, 8, 8);
         }
         Ok(())

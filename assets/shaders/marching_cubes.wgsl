@@ -40,14 +40,14 @@ fn corner_index_to_coordinates(index: vec3<u32>, corner_index: u32) -> vec3<u32>
     return index + offset[corner_index];
 }
 
-@compute @workgroup_size(4)
+@compute @workgroup_size(4, 4, 4)
 fn main(
-    @builtin(global_invocation_id) local_index: vec3<u32>,
+    @builtin(global_invocation_id) index: vec3<u32>,
     @builtin(workgroup_id) group_index : vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
-    let group_size: u32 = 32u / 4u;
-    let index = local_index + vec3<u32>(group_index.x * group_size, group_index.y * group_size, group_index.z * group_size);
+  //  let group_size: u32 = 32u / 4u;
+   // let index = local_index + vec3<u32>(group_index.x * group_size, group_index.y * group_size, group_index.z * group_size);
   //  if (index_to_output_index(index) + 16 > OUTPUT_LENGTH) {
 //        return;
   //  }

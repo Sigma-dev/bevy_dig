@@ -1,4 +1,4 @@
-const INTERNAL_CHUNK_WIDTH: u32 = 32;
+const INTERNAL_CHUNK_WIDTH: u32 = 31;
 const CHUNK_WIDTH: u32 = INTERNAL_CHUNK_WIDTH + 2u;
 const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 const OUTPUT_LENGTH = INPUT_LENGTH * 12;
@@ -40,8 +40,18 @@ fn corner_index_to_coordinates(index: vec3<u32>, corner_index: u32) -> vec3<u32>
     return index + offset[corner_index];
 }
 
-@compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) index: vec3<u32>) {
+@compute @workgroup_size(4)
+fn main(
+    @builtin(global_invocation_id) local_index: vec3<u32>,
+    @builtin(workgroup_id) group_index : vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+    let group_size: u32 = 32u / 4u;
+    let index = local_index + vec3<u32>(group_index.x * group_size, group_index.y * group_size, group_index.z * group_size);
+  //  if (index_to_output_index(index) + 16 > OUTPUT_LENGTH) {
+//        return;
+  //  }
+   // let pos = index + vec3<u32>(workgroup_id.x, workgroup_id.y * CHUNK_WIDTH, workgroup_id.z)
     let coordinates = array<vec3<u32>, 8>(
         index,
         index + vec3<u32>(1, 0, 0),

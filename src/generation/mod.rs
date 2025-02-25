@@ -18,7 +18,7 @@ use crate::dig::terrain::{ChunksToGenerateQueue, FinishedGenerating};
 
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
-pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_WIDTH: usize = 31;
 pub const CHUNK_DATA: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 pub const INPUT_CHUNK_WIDTH: usize = CHUNK_WIDTH + 2;
 pub const BUFFER_LEN: usize = INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;
@@ -335,11 +335,12 @@ impl render_graph::Node for ComputeNode {
 
             pass.set_bind_group(0, &bind_group.0, &[]);
             pass.set_pipeline(init_pipeline);
-            pass.dispatch_workgroups(
+            /*  pass.dispatch_workgroups(
                 (CHUNK_WIDTH + 1) as u32,
                 (CHUNK_WIDTH + 1) as u32,
                 (CHUNK_WIDTH + 1) as u32,
-            );
+            ); */
+            pass.dispatch_workgroups(8, 8, 8);
         }
         Ok(())
     }

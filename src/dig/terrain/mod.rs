@@ -1,17 +1,11 @@
 use std::collections::VecDeque;
 
 use avian3d::prelude::{Collider, RigidBody};
-use bevy::{
-    prelude::*,
-    render::{render_resource::BufferUsages, storage::ShaderStorageBuffer},
-    window::PrimaryWindow,
-};
+use bevy::{prelude::*, window::PrimaryWindow};
 use interaction::{PointerPosition, VoxelInteractionPlugin};
 
 use crate::{
-    generation::{
-        ChunkMeshGenerated, GpuReadbackPlugin, ReadBackIndex, TerrainData, BUFFER_LEN, CHUNK_WIDTH,
-    },
+    generation::{ChunkMeshGenerated, GpuReadbackPlugin, BUFFER_LEN, CHUNK_WIDTH},
     voxel::{chunks_manager::ChunksManager, VoxelChunk},
 };
 
@@ -28,7 +22,7 @@ struct ChunkMesh {
 pub struct FinishedGenerating;
 
 #[derive(Resource)]
-pub struct ChunksToGenerateQueue(VecDeque<ChunksToGenerateQueueElement>);
+pub struct ChunksToGenerateQueue(pub VecDeque<ChunksToGenerateQueueElement>);
 
 pub struct ChunksToGenerateQueueElement {
     pub index: UVec3,
@@ -42,39 +36,12 @@ impl Plugin for DigTerrainPlugin {
             .add_plugins(GpuReadbackPlugin)
             .add_event::<FinishedGenerating>()
             .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
-            .add_systems(Update, (handle_queue, handle_voxel_changes, update_mesh));
+            .add_systems(Update, (handle_voxel_changes, update_mesh));
     }
 }
 
 pub fn spawn_terrain(mut chunks_manager: ChunksManager) {
     chunks_manager.create_chunks(UVec3::new(3, 1, 3), VOXEL_SCALE);
-}
-
-fn handle_queue(
-    mut commands: Commands,
-    mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
-    mut queue: ResMut<ChunksToGenerateQueue>,
-    readback_q: Query<&ReadBackIndex>,
-    mut finished_w: EventWriter<FinishedGenerating>,
-) {
-    if readback_q.iter().len() > 0 {
-        return;
-    }
-    let Some(element) = queue.0.pop_front() else {
-        return;
-    };
-    if queue.0.is_empty() {
-        finished_w.send(FinishedGenerating);
-    }
-    let vec: Vec<u32> = element
-        .input_data
-        .iter()
-        .map(|a| if *a { 1 } else { 0 })
-        .collect();
-    let mut input_buffer = ShaderStorageBuffer::from(vec);
-    input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
-    let handle = buffers.add(input_buffer);
-    commands.insert_resource(TerrainData(handle, element.index));
 }
 
 fn handle_voxel_changes(

@@ -3,8 +3,10 @@
 
 
 BUG FIXES:
-- Sometimes the mesh has missing triangles
-- Sometimes the player falls through the mesh(probably the bad kinematic collision and the slim collider)
+- Sometimes the mesh has missing triangles -> Investigate
+- Sometimes the player falls through the mesh(probably the bad kinematic collision and the slim collider) -> Use the other kinematic solver sent on discord
 
 
 IMPROVEMENTS:
+Remove as much delay as possible from click to mesh instantiation -> ask on discord
+Make the green grass top shader. -> use solution from discord

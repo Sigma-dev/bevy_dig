@@ -14,6 +14,8 @@ use bevy::{
     utils::hashbrown::HashMap,
 };
 
+use crate::dig::terrain::{ChunksToGenerateQueue, FinishedGenerating};
+
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
 pub const CHUNK_WIDTH: usize = 32;
@@ -30,7 +32,7 @@ impl Plugin for GpuReadbackPlugin {
         app.add_plugins((ExtractResourcePlugin::<ReadbackBuffer>::default(),))
             .add_event::<ChunkMeshGenerated>()
             .add_systems(Startup, setup)
-            .add_systems(PostUpdate, update_resource);
+            .add_systems(PostUpdate, handle_queue);
     }
 
     fn finish(&self, app: &mut App) {
@@ -66,55 +68,70 @@ impl ChunkMeshGenerated {
 #[derive(Component)]
 pub struct ReadBackIndex(UVec3);
 
-#[derive(Resource, Debug)]
-pub struct TerrainData(pub Handle<ShaderStorageBuffer>, pub UVec3);
-
-fn update_resource(
-    terrain_data: Option<Res<TerrainData>>,
+fn handle_queue(
     mut commands: Commands,
-    maybe_buffer: Option<ResMut<ReadbackBuffer>>,
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
+    mut queue: ResMut<ChunksToGenerateQueue>,
+    readback_q: Query<&ReadBackIndex>,
+    mut finished_w: EventWriter<FinishedGenerating>,
+    maybe_buffer: Option<ResMut<ReadbackBuffer>>,
 ) {
     commands.remove_resource::<BuildTerrain>();
-    let Some(res) = terrain_data else {
+
+    let Some(mut buffer) = maybe_buffer else {
         return;
     };
-
-    if res.is_changed() {
-        let Some(mut buffer) = maybe_buffer else {
-            return;
-        };
-        commands.insert_resource::<BuildTerrain>(BuildTerrain);
-        buffer.input = res.0.clone();
-        buffers.insert(&buffer.output, make_empty_triangles_buffer());
-
-        commands
-            .spawn((
-                Readback::buffer(buffer.output.clone()),
-                ReadBackIndex(res.1),
-            ))
-            .observe(
-                |trigger: Trigger<ReadbackComplete>,
-                 mut commanads: Commands,
-                 mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>,
-                 index_q: Query<&ReadBackIndex>| {
-                    let index = index_q.get(trigger.entity()).unwrap().0;
-                    let readback: Vec<Vec4> = trigger.event().to_shader_type();
-                    let filtered: Vec<Vec3> = readback
-                        .iter()
-                        .filter(|v| v.w != -1.)
-                        .map(|v4| v4.xyz())
-                        .collect();
-                    let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
-                    println!("Readback {:?}", indices.len());
-                    if indices.len() > 0 {
-                        let mesh = create_terrain_mesh(&indices, &unique);
-                        chunk_mesh_w.send(ChunkMeshGenerated::new(index, mesh));
-                        commanads.entity(trigger.entity()).despawn();
-                    }
-                },
-            );
+    if readback_q.iter().len() > 0 {
+        return;
     }
+    let Some(element) = queue.0.pop_front() else {
+        return;
+    };
+    if queue.0.is_empty() {
+        finished_w.send(FinishedGenerating);
+    }
+    let vec: Vec<u32> = element
+        .input_data
+        .iter()
+        .map(|a| if *a { 1 } else { 0 })
+        .collect();
+    let mut input_buffer = ShaderStorageBuffer::from(vec);
+    input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
+    let handle = buffers.add(input_buffer);
+    commands.insert_resource::<BuildTerrain>(BuildTerrain);
+    buffer.input = handle;
+    buffers.insert(&buffer.output, make_empty_triangles_buffer());
+    spawn_readback(&mut commands, buffer.output.clone(), element.index);
+}
+
+fn spawn_readback(
+    commands: &mut Commands,
+    buffer_handle: Handle<ShaderStorageBuffer>,
+    index: UVec3,
+) {
+    commands
+        .spawn((Readback::buffer(buffer_handle), ReadBackIndex(index)))
+        .observe(
+            |trigger: Trigger<ReadbackComplete>,
+             mut commanads: Commands,
+             mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>,
+             index_q: Query<&ReadBackIndex>| {
+                let index = index_q.get(trigger.entity()).unwrap().0;
+                let readback: Vec<Vec4> = trigger.event().to_shader_type();
+                let filtered: Vec<Vec3> = readback
+                    .iter()
+                    .filter(|v| v.w != -1.)
+                    .map(|v4| v4.xyz())
+                    .collect();
+                let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
+                println!("Readback {:?}", indices.len());
+                if indices.len() > 0 {
+                    let mesh = create_terrain_mesh(&indices, &unique);
+                    chunk_mesh_w.send(ChunkMeshGenerated::new(index, mesh));
+                    commanads.entity(trigger.entity()).despawn();
+                }
+            },
+        );
 }
 
 pub fn create_terrain_mesh(indices: &Vec<usize>, uniques: &Vec<Vec3>) -> Mesh {

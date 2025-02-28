@@ -14,17 +14,16 @@ use bevy::{
     utils::hashbrown::HashMap,
 };
 
-use crate::{
-    dig::terrain::{ChunksToGenerateQueue, FinishedGenerating},
-    utils::print_slices,
-};
+use crate::dig::terrain::{ChunksToGenerateQueue, FinishedGenerating};
 
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
 pub const CHUNK_WIDTH: usize = 31;
 pub const CHUNK_DATA: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 pub const INPUT_CHUNK_WIDTH: usize = CHUNK_WIDTH + 2;
-pub const BUFFER_LEN: usize = INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;
+pub const BUFFER_LEN_UNCOMPRESSED: usize =
+    INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;
+pub const BUFFER_LEN: usize = BUFFER_LEN_UNCOMPRESSED / 32;
 const MAX_VERTICES_PER_CUBE: usize = 12;
 const TRI_BUFFER_LEN: usize =
     (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_CUBE;
@@ -94,18 +93,39 @@ fn handle_queue(
     if queue.0.is_empty() {
         finished_w.send(FinishedGenerating);
     }
-    let vec: Vec<u32> = element
-        .input_data
-        .iter()
-        .map(|a| if *a { 1 } else { 0 })
-        .collect();
-    let mut input_buffer = ShaderStorageBuffer::from(vec);
+    let compressed = compress_bools_to_u32(&element.input_data);
+    let mut input_buffer = ShaderStorageBuffer::from(compressed);
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let handle = buffers.add(input_buffer);
     commands.insert_resource::<BuildTerrain>(BuildTerrain);
     buffer.input = handle;
     buffers.insert(&buffer.output, make_empty_triangles_buffer());
     spawn_readback(&mut commands, buffer.output.clone(), element.index);
+}
+
+fn compress_bools_to_u32(bools: &[bool]) -> Vec<u32> {
+    let mut result = Vec::new();
+    let mut current_u32 = 0u32;
+    let mut bit_position = 0;
+
+    for &b in bools {
+        if b {
+            current_u32 |= 1 << bit_position;
+        }
+
+        bit_position += 1;
+
+        if bit_position == 32 {
+            result.push(current_u32);
+            current_u32 = 0;
+            bit_position = 0;
+        }
+    }
+
+    if bit_position > 0 {
+        result.push(current_u32);
+    }
+    result
 }
 
 fn spawn_readback(

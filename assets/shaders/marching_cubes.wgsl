@@ -1,13 +1,18 @@
 const INTERNAL_CHUNK_WIDTH: u32 = 31;
 const MAX_VERTICES_PER_VOXEL: u32 = 12;
 const CHUNK_WIDTH: u32 = INTERNAL_CHUNK_WIDTH + 2u;
-const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH / 32;
 const OUTPUT_LENGTH = INPUT_LENGTH * MAX_VERTICES_PER_VOXEL;
 @group(0) @binding(0) var<storage, read_write> input_data: array<u32, INPUT_LENGTH>;
 @group(0) @binding(1) var<storage, read_write> data: array<vec4<f32>, OUTPUT_LENGTH>;
 
 fn is_voxel_empty(pos: vec3<u32>) -> bool {
-    return input_data[pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH] != 1;
+    let index = pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH;
+    let u32_index = index / 32u;
+    let bit_index = index % 32u;
+    let compressed_u32 = input_data[u32_index];
+
+    return ((compressed_u32 >> bit_index) & 1u) == 0u;
 }
 
 fn index_to_output_index(coords: vec3<u32>) -> u32 {

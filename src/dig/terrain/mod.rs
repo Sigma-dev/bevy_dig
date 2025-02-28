@@ -41,7 +41,7 @@ impl Plugin for DigTerrainPlugin {
 }
 
 pub fn spawn_terrain(mut chunks_manager: ChunksManager) {
-    chunks_manager.create_chunks(UVec3::new(3, 1, 3), VOXEL_SCALE);
+    chunks_manager.create_chunks(UVec3::new(3, 3, 3), VOXEL_SCALE);
 }
 
 fn handle_voxel_changes(

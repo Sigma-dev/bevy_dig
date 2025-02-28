@@ -4,10 +4,10 @@
 
 BUG FIXES:
 - Sometimes the mesh has missing triangles -> Investigate
-- Sometimes the player falls through the mesh(probably the bad kinematic collision and the slim collider) -> Use the other kinematic solver sent on discord
+- Sometimes the player falls through the mesh(probably the bad kinematic collision and the slim collider) -> Use the other kinematic solver sent on discord -> it is slightly better, but clipping still occurs regularly
 
 
 IMPROVEMENTS:
 Remove as much delay as possible from click to mesh instantiation -> ask on discord
 Make the green grass top shader. -> use solution from discord
-Compress 32 voxels in each u32 (memory is way slower than computation)
+Make the compute shader process multiple chunks from the queue per frame, it shouldn't be that hard to implement since chunks have a fixed input size and output size

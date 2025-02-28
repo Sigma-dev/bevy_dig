@@ -17,7 +17,6 @@ use voxel::chunks_manager::ChunksManager;
 mod dig;
 mod generation;
 mod indexed_camera;
-mod utils;
 mod voxel;
 
 fn main() {

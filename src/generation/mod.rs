@@ -142,9 +142,13 @@ fn spawn_readback(
              index_q: Query<&ReadBackIndex>| {
                 let index = index_q.get(trigger.entity()).unwrap().0;
                 let readback: Vec<Vec4> = trigger.event().to_shader_type();
+                if readback[0].w == -1. {
+                    return;
+                }
+                commanads.entity(trigger.entity()).despawn();
                 let filtered: Vec<Vec3> = readback
                     .iter()
-                    .filter(|v| v.w != -1.)
+                    .filter(|v| v.w == 0.0)
                     .map(|v4| v4.xyz())
                     .collect();
                 let (indices, unique) = deduplicate_vertices(&filtered, 0.1);
@@ -152,7 +156,6 @@ fn spawn_readback(
                 if indices.len() > 0 {
                     let mesh = create_terrain_mesh(&indices, &unique);
                     chunk_mesh_w.send(ChunkMeshGenerated::new(index, mesh));
-                    commanads.entity(trigger.entity()).despawn();
                 }
             },
         );

@@ -9,7 +9,7 @@ use bevy::{
 
 use crate::{
     dig::terrain::VOXEL_SCALE,
-    generation::{BUFFER_LEN, CHUNK_DATA, CHUNK_WIDTH},
+    generation::{BUFFER_LEN_UNCOMPRESSED, CHUNK_DATA, CHUNK_WIDTH},
 };
 
 use super::VoxelChunk;
@@ -115,9 +115,9 @@ impl<'w, 's> ChunksManager<'w, 's> {
         result
     }
 
-    pub fn get_chunk_surrounded(&self, index: UVec3) -> [bool; BUFFER_LEN] {
+    pub fn get_chunk_surrounded(&self, index: UVec3) -> [bool; BUFFER_LEN_UNCOMPRESSED] {
         let data = self.get_chunk_and_surrounding_data(index);
-        let mut result = [false; BUFFER_LEN];
+        let mut result = [false; BUFFER_LEN_UNCOMPRESSED];
         for x in 0..(CHUNK_WIDTH + 2) {
             for y in 0..(CHUNK_WIDTH + 2) {
                 for z in 0..(CHUNK_WIDTH + 2) {

@@ -5,7 +5,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use interaction::{PointerPosition, VoxelInteractionPlugin};
 
 use crate::{
-    generation::{ChunkMeshGenerated, GpuReadbackPlugin, BUFFER_LEN, CHUNK_WIDTH},
+    generation::{ChunkMeshGenerated, GpuReadbackPlugin, BUFFER_LEN_UNCOMPRESSED, CHUNK_WIDTH},
     voxel::{chunks_manager::ChunksManager, VoxelChunk},
 };
 
@@ -26,7 +26,7 @@ pub struct ChunksToGenerateQueue(pub VecDeque<ChunksToGenerateQueueElement>);
 
 pub struct ChunksToGenerateQueueElement {
     pub index: UVec3,
-    pub input_data: [bool; BUFFER_LEN],
+    pub input_data: [bool; BUFFER_LEN_UNCOMPRESSED],
 }
 
 pub(crate) struct DigTerrainPlugin;

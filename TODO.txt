@@ -10,3 +10,4 @@ BUG FIXES:
 IMPROVEMENTS:
 Remove as much delay as possible from click to mesh instantiation -> ask on discord
 Make the green grass top shader. -> use solution from discord
+Compress 32 voxels in each u32 (memory is way slower than computation)

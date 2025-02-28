@@ -14,7 +14,10 @@ use bevy::{
     utils::hashbrown::HashMap,
 };
 
-use crate::dig::terrain::{ChunksToGenerateQueue, FinishedGenerating};
+use crate::{
+    dig::terrain::{ChunksToGenerateQueue, FinishedGenerating},
+    utils::print_slices,
+};
 
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
@@ -25,6 +28,7 @@ pub const BUFFER_LEN: usize = INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUN
 const MAX_VERTICES_PER_CUBE: usize = 12;
 const TRI_BUFFER_LEN: usize =
     (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * (CHUNK_WIDTH + 2) * MAX_VERTICES_PER_CUBE;
+const DISPATCH: u32 = (CHUNK_WIDTH as u32 + 1) / 4;
 
 pub(crate) struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
@@ -335,7 +339,7 @@ impl render_graph::Node for ComputeNode {
 
             pass.set_bind_group(0, &bind_group.0, &[]);
             pass.set_pipeline(init_pipeline);
-            pass.dispatch_workgroups(8, 8, 8);
+            pass.dispatch_workgroups(DISPATCH, DISPATCH, DISPATCH);
         }
         Ok(())
     }

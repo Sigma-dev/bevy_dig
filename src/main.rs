@@ -53,7 +53,7 @@ fn main() {
 struct PlayerSpawned;
 
 fn setup(mut commands: Commands) {
-    commands.spawn((
+    /*  commands.spawn((
         DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY,
             shadows_enabled: true,
@@ -68,7 +68,7 @@ fn setup(mut commands: Commands) {
     commands.insert_resource(AmbientLight {
         color: Color::WHITE.into(),
         brightness: 100.,
-    });
+    }); */
 
     commands.spawn((
         Camera3d::default(),

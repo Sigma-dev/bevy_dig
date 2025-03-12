@@ -9,6 +9,8 @@ use crate::{
     voxel::{chunks_manager::ChunksManager, VoxelChunk},
 };
 
+use super::lobby::GenerateChunks;
+
 mod interaction;
 
 pub const VOXEL_SCALE: f32 = 0.25;
@@ -36,12 +38,22 @@ impl Plugin for DigTerrainPlugin {
             .add_plugins(GpuReadbackPlugin)
             .add_event::<FinishedGenerating>()
             .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
-            .add_systems(Update, (handle_voxel_changes, update_mesh));
+            .add_systems(Update, (handle_voxel_changes, update_mesh, spawn_terrain));
     }
 }
 
-pub fn spawn_terrain(mut chunks_manager: ChunksManager) {
-    chunks_manager.create_chunks(UVec3::new(3, 3, 3), VOXEL_SCALE);
+pub fn spawn_terrain(
+    mut chunks_manager: ChunksManager,
+    mut generate_r: EventReader<GenerateChunks>,
+) {
+    for generate_chunk in generate_r.read() {
+        chunks_manager.create_chunks(UVec3::new(3, 3, 3), VOXEL_SCALE);
+        println!("Do");
+
+        chunks_manager.apply_history(&generate_chunk.dig_history);
+        break;
+    }
+    generate_r.clear();
 }
 
 fn handle_voxel_changes(

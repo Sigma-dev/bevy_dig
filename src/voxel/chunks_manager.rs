@@ -6,6 +6,7 @@ use bevy::{
     },
     prelude::*,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     dig::terrain::VOXEL_SCALE,
@@ -21,12 +22,19 @@ pub struct ChunksManager<'w, 's> {
     #[doc(hidden)]
     chunks: Query<'w, 's, &'static mut VoxelChunk>,
     #[doc(hidden)]
-    chunks_info: Option<Res<'w, ChunksInfo>>,
+    chunks_info: Option<ResMut<'w, ChunksInfo>>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct DigAction {
+    pos: Vec3,
+    radius: f32,
 }
 
 #[derive(Resource)]
 pub struct ChunksInfo {
-    amount: UVec3,
+    pub amount: UVec3,
+    pub dig_history: Vec<DigAction>,
 }
 
 impl<'w, 's> ChunksManager<'w, 's> {
@@ -34,7 +42,10 @@ impl<'w, 's> ChunksManager<'w, 's> {
         if amount.x == 0 || amount.y == 0 || amount.z == 0 {
             panic!("Amount should be atleast 1 on all axis");
         }
-        self.commands.insert_resource(ChunksInfo { amount });
+        self.commands.insert_resource(ChunksInfo {
+            amount,
+            dig_history: Vec::new(),
+        });
         for x in 0..amount.x {
             for y in 0..amount.y {
                 for z in 0..amount.z {
@@ -137,11 +148,23 @@ impl<'w, 's> ChunksManager<'w, 's> {
     }
 
     pub fn dig_sphere(&mut self, world_pos: Vec3, radius: f32) {
+        if let Some(ref mut info) = self.chunks_info {
+            info.dig_history.push(DigAction {
+                pos: world_pos,
+                radius,
+            });
+        }
         self.set_sphere(world_pos, radius, false);
     }
 
     pub fn build_sphere(&mut self, world_pos: Vec3, radius: f32) {
         self.set_sphere(world_pos, radius, true);
+    }
+
+    pub fn apply_history(&mut self, history: &Vec<DigAction>) {
+        for dig in history {
+            self.dig_sphere(dig.pos, dig.radius);
+        }
     }
 
     fn world_pos_to_voxel_pos(&self, world_pos: Vec3) -> Vec3 {

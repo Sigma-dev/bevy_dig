@@ -1,7 +1,12 @@
 use std::collections::VecDeque;
 
 use avian3d::prelude::{Collider, RigidBody};
-use bevy::{prelude::*, window::PrimaryWindow};
+use bevy::{
+    pbr::{ExtendedMaterial, MaterialExtension, OpaqueRendererMethod},
+    prelude::*,
+    render::render_resource::{AsBindGroup, ShaderRef},
+    window::PrimaryWindow,
+};
 use interaction::{PointerPosition, VoxelInteractionPlugin};
 
 use crate::{
@@ -33,7 +38,12 @@ pub(crate) struct DigTerrainPlugin;
 impl Plugin for DigTerrainPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(VoxelInteractionPlugin)
-            .add_plugins(GpuReadbackPlugin)
+            .add_plugins(
+                (
+                    GpuReadbackPlugin,
+                    MaterialPlugin::<ExtendedMaterial<StandardMaterial, GroundMaterial>>::default(),
+                ), //  MaterialPlugin::<GroundMaterial>::default(),
+            )
             .add_event::<FinishedGenerating>()
             .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
             .add_systems(Update, (handle_voxel_changes, update_mesh));
@@ -64,6 +74,8 @@ fn update_mesh(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    //    mut ground_materials: ResMut<Assets<GroundMaterial>>,
+    mut ground2_materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, GroundMaterial>>>,
     mut mesh_chunk_r: EventReader<ChunkMeshGenerated>,
     chunks_manager: ChunksManager,
     terrain_q: Query<(Entity, &Mesh3d, &ChunkMesh)>,
@@ -72,6 +84,23 @@ fn update_mesh(
         let scale = VOXEL_SCALE;
         let mesh = ev.mesh.clone().scaled_by(Vec3::splat(scale));
         let collider = Collider::trimesh_from_mesh(&mesh).unwrap();
+
+        /* let _ground_handle = ground_materials.add(GroundMaterial {
+            alpha_mode: AlphaMode::Blend,
+        }); */
+        let _material_handle = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.34, 0.2, 0.2),
+            perceptual_roughness: 1.,
+            ..default()
+        });
+        let _ground2_handle = ground2_materials.add(ExtendedMaterial {
+            base: StandardMaterial {
+                base_color: Color::WHITE,
+                opaque_render_method: OpaqueRendererMethod::Auto,
+                ..Default::default()
+            },
+            extension: GroundMaterial {},
+        });
 
         if let Some((entity, mesh_handle, _)) = terrain_q
             .iter()
@@ -89,11 +118,7 @@ fn update_mesh(
                         (ev.index * CHUNK_WIDTH as u32).as_vec3() * VOXEL_SCALE - offset,
                     ),
                     Mesh3d(meshes.add(mesh)),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: Color::srgb(0.34, 0.2, 0.2),
-                        perceptual_roughness: 1.,
-                        ..default()
-                    })),
+                    MeshMaterial3d(_ground2_handle),
                     ChunkMesh { index: ev.index },
                     RigidBody::Static,
                     collider,
@@ -116,5 +141,41 @@ fn update_mesh(
                     commands.remove_resource::<PointerPosition>();
                 });
         }
+    }
+}
+
+/* #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct GroundMaterial {
+    alpha_mode: AlphaMode,
+}
+
+impl Material for GroundMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/ground.wgsl".into()
+    }
+
+    fn vertex_shader() -> ShaderRef {
+        "shaders/ground.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
+    }
+} */
+
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+struct GroundMaterial {}
+
+impl MaterialExtension for GroundMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/ground.wgsl".into()
+    }
+
+    fn prepass_vertex_shader() -> ShaderRef {
+        "shaders/ground.wgsl".into()
+    }
+
+    fn deferred_fragment_shader() -> ShaderRef {
+        "shaders/ground.wgsl".into()
     }
 }

@@ -32,7 +32,7 @@ fn fragment(
     var pbr_input = pbr_input_from_standard_material(in, is_front);
 
     var color =  vec4<f32>(1., 0.5, 0.5, 1.);
-    if in.world_position.y > -0.4 + height_noise(in.world_position.x, in.world_position.z, 0.1, 0.5) {
+    if in.world_position.y > -0.15 + height_noise(in.world_position.x, in.world_position.z, 0.1, 0.5) {
        color = vec4<f32>(0.1, 1., 0.1, 1.);
     }
 

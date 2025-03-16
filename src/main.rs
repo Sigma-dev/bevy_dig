@@ -17,6 +17,7 @@ use voxel::chunks_manager::ChunksManager;
 mod dig;
 mod generation;
 mod indexed_camera;
+mod sky;
 mod voxel;
 
 fn main() {
@@ -53,7 +54,7 @@ fn main() {
 struct PlayerSpawned;
 
 fn setup(mut commands: Commands) {
-    /*  commands.spawn((
+    commands.spawn((
         DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY,
             shadows_enabled: true,
@@ -68,7 +69,7 @@ fn setup(mut commands: Commands) {
     commands.insert_resource(AmbientLight {
         color: Color::WHITE.into(),
         brightness: 100.,
-    }); */
+    });
 
     commands.spawn((
         Camera3d::default(),
@@ -79,10 +80,6 @@ fn setup(mut commands: Commands) {
         EditorCam::default(),
         Transform::from_translation(Vec3::splat(50.)).looking_at(Vec3::ZERO, Vec3::Y),
         IndexedCamera::new(1),
-        PointLight {
-            intensity: 100.,
-            ..default()
-        },
     ));
 }
 

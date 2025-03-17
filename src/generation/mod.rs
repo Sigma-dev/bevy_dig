@@ -19,7 +19,6 @@ use crate::ChunksToGenerateQueue;
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
 pub const CHUNK_WIDTH: usize = 31;
-pub const CHUNK_DATA: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
 pub const INPUT_CHUNK_WIDTH: usize = CHUNK_WIDTH + 2;
 pub const BUFFER_LEN_UNCOMPRESSED: usize =
     INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH * INPUT_CHUNK_WIDTH;

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
-use bevy_editor_cam::{prelude::EditorCam, DefaultEditorCamPlugins};
+use bevy::{core::FrameCount, prelude::*};
+use bevy_editor_cam::DefaultEditorCamPlugins;
 use generation::*;
 use std::collections::VecDeque;
 mod generation;
@@ -32,11 +32,14 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
-        Transform::from_translation(Vec3::splat(20.)).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_translation(Vec3::splat(15.)).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
-fn delayed_setup(mut queue: ResMut<ChunksToGenerateQueue>) {
+fn delayed_setup(mut queue: ResMut<ChunksToGenerateQueue>, frame_count: Res<FrameCount>) {
+    if frame_count.0 != 20 {
+        return;
+    }
     let mut chunk = [true; BUFFER_LEN_UNCOMPRESSED];
     for i in 0..BUFFER_LEN_UNCOMPRESSED {
         chunk[i] = i % 2 == 0;

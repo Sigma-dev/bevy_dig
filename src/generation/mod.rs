@@ -14,7 +14,7 @@ use bevy::{
     utils::hashbrown::HashMap,
 };
 
-use crate::dig::terrain::{ChunksToGenerateQueue, FinishedGenerating};
+use crate::ChunksToGenerateQueue;
 
 const SHADER_ASSET_PATH: &str = "shaders/marching_cubes.wgsl";
 
@@ -76,7 +76,6 @@ fn handle_queue(
     mut buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut queue: ResMut<ChunksToGenerateQueue>,
     readback_q: Query<&ReadBackIndex>,
-    mut finished_w: EventWriter<FinishedGenerating>,
     maybe_buffer: Option<ResMut<ReadbackBuffer>>,
 ) {
     commands.remove_resource::<BuildTerrain>();
@@ -90,9 +89,6 @@ fn handle_queue(
     let Some(element) = queue.0.pop_front() else {
         return;
     };
-    if queue.0.is_empty() {
-        finished_w.send(FinishedGenerating);
-    }
     let compressed = compress_bools_to_u32(&element.input_data);
     let mut input_buffer = ShaderStorageBuffer::from(compressed);
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;

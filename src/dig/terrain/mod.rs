@@ -26,14 +26,6 @@ struct ChunkMesh {
 #[derive(Event)]
 pub struct FinishedGenerating;
 
-#[derive(Resource)]
-pub struct ChunksToGenerateQueue(pub VecDeque<ChunksToGenerateQueueElement>);
-
-pub struct ChunksToGenerateQueueElement {
-    pub index: UVec3,
-    pub input_data: [bool; BUFFER_LEN_UNCOMPRESSED],
-}
-
 pub(crate) struct DigTerrainPlugin;
 impl Plugin for DigTerrainPlugin {
     fn build(&self, app: &mut App) {
@@ -50,9 +42,7 @@ impl Plugin for DigTerrainPlugin {
     }
 }
 
-pub fn spawn_terrain(mut chunks_manager: ChunksManager) {
-    chunks_manager.create_chunks(UVec3::new(3, 3, 3), VOXEL_SCALE);
-}
+pub fn spawn_terrain(mut chunks_manager: ChunksManager) {}
 
 fn handle_voxel_changes(
     mut set: ParamSet<(Query<Entity, Changed<VoxelChunk>>, ChunksManager)>,

@@ -171,10 +171,6 @@ impl MaterialExtension for GroundMaterial {
         "shaders/ground.wgsl".into()
     }
 
-    fn prepass_vertex_shader() -> ShaderRef {
-        "shaders/ground.wgsl".into()
-    }
-
     fn deferred_fragment_shader() -> ShaderRef {
         "shaders/ground.wgsl".into()
     }

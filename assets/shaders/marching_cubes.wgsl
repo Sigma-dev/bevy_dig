@@ -5,6 +5,7 @@ const INPUT_LENGTH = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH / 32;
 const OUTPUT_LENGTH = INPUT_LENGTH * MAX_VERTICES_PER_VOXEL;
 @group(0) @binding(0) var<storage, read_write> input_data: array<u32, INPUT_LENGTH>;
 @group(0) @binding(1) var<storage, read_write> output_data: array<vec4<f32>, OUTPUT_LENGTH>;
+@group(0) @binding(2) var<storage, read> triangles_table: array<array<i32, 16>, 256>;
 
 fn is_voxel_empty(pos: vec3<u32>) -> bool {
     let index = pos.x + pos.y * CHUNK_WIDTH + pos.z * CHUNK_WIDTH * CHUNK_WIDTH;
@@ -102,7 +103,7 @@ const edge_index_to_conter_index = array<array<u32, 2>, 12>(
     array<u32, 2>(2, 6),
     array<u32, 2>(3, 7)
 );
-
+/*
 const triangles_table = array<array<i32, 16>, 256>(
     array<i32, 16>(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
     array<i32, 16>(0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
@@ -360,4 +361,4 @@ const triangles_table = array<array<i32, 16>, 256>(
     array<i32, 16>(0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
     array<i32, 16>(0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1),
     array<i32, 16>(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1)
-);
+);*/

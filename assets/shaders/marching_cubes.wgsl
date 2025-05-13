@@ -76,9 +76,12 @@ fn main(
     }
 
     let edges = triangles_table[cube_index];
-    for (var i: u32 = 0; i < 16 && edges[i] != -1; i += 3u) {
+    for (var i: u32 = 0; i < 16; i += 3u) {
         for (var j: u32 = 0; j < 3; j++) {
             let edge = edges[i + j];
+            if (edge == -1) {
+                return;
+            }
             let corners = edge_index_to_conter_index[edge];
             let p1 = corner_index_to_coordinates(index,  corners[0]);
             let p2 = corner_index_to_coordinates(index, corners[1]);

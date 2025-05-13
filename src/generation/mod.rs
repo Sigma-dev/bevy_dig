@@ -96,6 +96,7 @@ fn handle_queue(
     input_buffer.buffer_description.usage |= BufferUsages::COPY_SRC;
     let handle = buffers.add(input_buffer);
     commands.insert_resource::<BuildTerrain>(BuildTerrain);
+    println!("dod");
     buffer.input = handle;
     buffers.insert(&buffer.output, make_empty_triangles_buffer());
     spawn_readback(&mut commands, buffer.output.clone(), element.index);
@@ -616,10 +617,11 @@ impl render_graph::Node for ComputeNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), render_graph::NodeRunError> {
-        println!("here");
+        //  println!("here");
         if world.get_resource::<BuildTerrain>().is_none() {
             return Ok(());
         }
+        println!("here2");
         let pipeline_cache = world.resource::<PipelineCache>();
         let pipeline = world.resource::<ComputePipeline>();
         let maybe_bind_group = world.get_resource::<GpuBufferBindGroup>();

@@ -1,4 +1,5 @@
 use bevy::{
+    platform::collections::HashMap,
     prelude::*,
     render::{
         extract_resource::*,
@@ -14,7 +15,6 @@ use bevy::{
         storage::*,
         *,
     },
-    utils::hashbrown::HashMap,
 };
 
 use crate::ChunksToGenerateQueue;
@@ -58,7 +58,7 @@ impl Plugin for GpuReadbackPlugin {
     }
 }
 
-#[derive(Event)]
+#[derive(Event, BufferedEvent)]
 pub struct ChunkMeshGenerated {
     pub index: UVec3,
     pub mesh: Mesh,
@@ -135,16 +135,16 @@ fn spawn_readback(
     commands
         .spawn((Readback::buffer(buffer_handle), ReadBackIndex(index)))
         .observe(
-            |trigger: Trigger<ReadbackComplete>,
+            |trigger: On<ReadbackComplete>,
              mut commanads: Commands,
              mut chunk_mesh_w: EventWriter<ChunkMeshGenerated>,
              index_q: Query<&ReadBackIndex>| {
-                let index = index_q.get(trigger.entity()).unwrap().0;
+                let index = index_q.get(trigger.target()).unwrap().0;
                 let readback: Vec<Vec4> = trigger.event().to_shader_type();
                 if readback[0].w == -1. {
                     return;
                 }
-                commanads.entity(trigger.entity()).despawn();
+                commanads.entity(trigger.target()).despawn();
                 let filtered: Vec<Vec3> = readback
                     .iter()
                     .filter(|v| v.w == 0.0)
@@ -154,7 +154,7 @@ fn spawn_readback(
                 println!("Readback {:?}", indices.len());
                 if indices.len() > 0 {
                     let mesh = create_terrain_mesh(&indices, &unique);
-                    chunk_mesh_w.send(ChunkMeshGenerated::new(index, mesh));
+                    chunk_mesh_w.write(ChunkMeshGenerated::new(index, mesh));
                 }
             },
         );
@@ -598,7 +598,7 @@ impl FromWorld for ComputePipeline {
             push_constant_ranges: Vec::new(),
             shader: shader.clone(),
             shader_defs: Vec::new(),
-            entry_point: "main".into(),
+            entry_point: None,
             zero_initialize_workgroup_memory: false,
         });
         ComputePipeline { layout, pipeline }

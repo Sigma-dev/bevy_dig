@@ -1,4 +1,4 @@
-use bevy::{core::FrameCount, prelude::*};
+use bevy::prelude::*;
 use bevy_editor_cam::DefaultEditorCamPlugins;
 use generation::*;
 use std::collections::VecDeque;
@@ -22,7 +22,7 @@ struct ChunkMesh {
 fn main() {
     // simulate_shader::run_simulation();
     App::new()
-        .add_plugins((DefaultPlugins, DefaultEditorCamPlugins, GpuReadbackPlugin))
+        .add_plugins((DefaultPlugins, GpuReadbackPlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, (delayed_setup, update_mesh))
         .insert_resource(ChunksToGenerateQueue(VecDeque::new()))
@@ -36,8 +36,8 @@ fn setup(mut commands: Commands) {
     ));
 }
 
-fn delayed_setup(mut queue: ResMut<ChunksToGenerateQueue>, frame_count: Res<FrameCount>) {
-    if frame_count.0 != 20 {
+fn delayed_setup(time: Res<Time>, mut queue: ResMut<ChunksToGenerateQueue>) {
+    if time.elapsed_secs() < 1. {
         return;
     }
     let mut chunk = [true; BUFFER_LEN_UNCOMPRESSED];
